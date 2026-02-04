@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException,File,UploadFile
 from fastapi.params import Body
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -111,3 +111,9 @@ async def update_account(
             status_code=400,
             detail=f"Database error: {str(e)}"
         )
+
+@router.post("/upload-accounts-csv")
+async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
+    #check if the file is in csv format or not
+    response = await repo.accounts_csv_update(file, db)
+    return response

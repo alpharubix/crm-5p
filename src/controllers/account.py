@@ -1,12 +1,15 @@
+import logging
 import math
 from datetime import datetime
 from typing import Optional
-
-from fastapi import HTTPException
+import io
+import pandas as pd
+from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
@@ -209,3 +212,33 @@ def get_account_by_id(db: Session, account_id: int) -> Account:
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     return account
+
+
+async def accounts_csv_update(file:UploadFile,db:Session):
+    try:
+        if file.filename.endswith(".csv"):
+            #if the file is csv file process the file
+            contents = await file.read()
+            csv_data = io.BytesIO(contents)
+            df = pd.read_csv(csv_data)
+            data = df.to_dict(orient="records")
+            if len(data) == 0:
+                return JSONResponse(status_code=400,content={"message": "At least 1 row is required"})
+            #after getting the data check the headers
+            required_headers = {"id","account_owner_id"}
+            csv_headers = set(data[0].keys())
+            if required_headers != csv_headers:
+                return JSONResponse(status_code=400,content={"message": "Excel headers mismatch found"})
+            db.bulk_update_mappings(Account,data)
+            db.commit()
+            return JSONResponse(status_code=200, content={"message": f"{len(data)} accounts updated successfully"})
+        else:
+            return JSONResponse(status_code=422, content="Only csv files are supported")
+    except Exception as e:
+        print(e)
+        db.rollback()
+        logging.exception("CSV account update failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Error processing CSV file"}
+        )
