@@ -11,7 +11,7 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     # Primary Key
-    id = Column(BIGINT, primary_key=True, index=True, autoincrement=False)
+    id = Column(BIGINT, primary_key=True, index=True,autoincrement=True)
 
     # Relationship to Account (The Fix)
     # account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)

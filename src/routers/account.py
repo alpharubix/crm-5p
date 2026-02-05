@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException,File,UploadFile
@@ -80,9 +80,11 @@ async def update_account(
                 if isinstance(value, str):
                     try:
                         value = datetime.fromisoformat(value)
-                    except ValueError:
-                        pass
-                setattr(db_account, key, value)
+                        if value < datetime.now(timezone.utc):
+                            raise HTTPException(status_code=400, detail={"message": "Date should not be in the past"})
+                    except Exception as e:
+                        raise e
+                    setattr(db_account, key, value)
 
             else:
                 setattr(db_account, key, value)
