@@ -15,7 +15,7 @@ from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 
 from ..models.account import Account
-from ..schemas.account import AccountBase
+from ..schemas.account import AccountBase, ListAccountsResponse
 
 
 def create_account(db: Session, data: AccountBase, created_by: str = "") -> Account:
@@ -260,7 +260,7 @@ def fetch_account_id(account_name:str,db:Session):
         # Convert to list of dicts
         dict_results = [row._asdict() for row in results]
         print(dict_results)
-        return JSONResponse(status_code=200,content={"data": dict_results})
+        return {"data":dict_results}
     except Exception as e:
         logging.exception(e)
         raise HTTPException(status_code=500, detail={"message":"Internal server error"})

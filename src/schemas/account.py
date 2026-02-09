@@ -163,6 +163,13 @@ class GetAssociatedAccountResponse(BaseModel):
         else:
             return value
 
-class AccountLookupResponse(BaseModel):
-    id: int
-    account_name:  Any
+class AccountItem(BaseModel):
+    id: int | str
+    account_name: Any
+
+    @field_serializer("id")
+    def serialize_id(self, value):
+        return str(value)
+
+class ListAccountsResponse(BaseModel):
+    data: List[AccountItem]
