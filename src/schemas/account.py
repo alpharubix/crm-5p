@@ -107,8 +107,8 @@ class AccountBase(BaseModel):
 
 class AccountResponse(BaseModel):
     id: str
-    first_name: str
-    last_name: str
+    first_name: Any
+    last_name: Any
     account_name: str | None
     email: Optional[str] = None
     phone: str

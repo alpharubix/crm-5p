@@ -52,7 +52,7 @@ class ContactResponse(BaseModel):
     id: str
 
     # Identity
-    first_name: str | None = None
+    first_name: Any
     last_name: str | None = None
     designation: Optional[str] = None
 
