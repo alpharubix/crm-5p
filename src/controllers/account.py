@@ -126,7 +126,7 @@ def get_all_accounts(
     if business_status:
         filters.append(Account.business_status == business_status)
     if call_back_date_time:
-        filters.append(Account.call_back_date_time >= call_back_date_time)
+        filters.append(Account.call_back_date_time <= call_back_date_time)
     if phone_number and phone_number.strip():
         filters.append(
             or_(

@@ -117,6 +117,7 @@ async def update_account(
 @router.post("/upload-accounts-csv")
 async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
     #check if the file is in csv format or not
+    print("file is under processing")
     response = await repo.accounts_csv_update(file, db)
     return response
 
