@@ -1,18 +1,21 @@
+import logging
 import math
 from datetime import datetime
 from typing import Optional
-
-from fastapi import HTTPException
+import io
+import pandas as pd
+from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 
 from ..models.account import Account
-from ..schemas.account import AccountBase
+from ..schemas.account import AccountBase, ListAccountsResponse
 
 
 def create_account(db: Session, data: AccountBase, created_by: str = "") -> Account:
@@ -123,7 +126,7 @@ def get_all_accounts(
     if business_status:
         filters.append(Account.business_status == business_status)
     if call_back_date_time:
-        filters.append(Account.call_back_date_time >= call_back_date_time)
+        filters.append(Account.call_back_date_time <= call_back_date_time)
     if phone_number and phone_number.strip():
         filters.append(
             or_(
@@ -209,3 +212,55 @@ def get_account_by_id(db: Session, account_id: int) -> Account:
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     return account
+
+
+async def accounts_csv_update(file:UploadFile,db:Session):
+    try:
+        if file.filename.endswith(".csv"):
+            #if the file is csv file process the file
+            contents = await file.read()
+            csv_data = io.BytesIO(contents)
+            df = pd.read_csv(csv_data)
+            data = df.to_dict(orient="records")
+            if len(data) == 0:
+                return JSONResponse(status_code=400,content={"message": "At least 1 row is required"})
+            #after getting the data check the headers
+            required_headers = {"id","account_owner_id"}
+            csv_headers = set(data[0].keys())
+            if required_headers != csv_headers:
+                return JSONResponse(status_code=400,content={"message": "Excel headers mismatch found"})
+            db.bulk_update_mappings(Account,data)
+            db.commit()
+            return JSONResponse(status_code=200, content={"message": f"{len(data)} accounts updated successfully"})
+        else:
+            return JSONResponse(status_code=422, content="Only csv files are supported")
+    except Exception as e:
+        print(e)
+        db.rollback()
+        logging.exception("CSV account update failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Error processing CSV file"}
+        )
+
+def fetch_account_id(account_name:str,db:Session):
+    try:
+        results = (
+            db.query(
+                Account.id.label("id"),
+                Account.account_name.label("account_name")
+            )
+            .filter(Account.account_name.ilike(f"%{account_name.strip()}%"))
+            .limit(10)
+            .all()
+        )
+        print(results)
+        if len(results) == 0:
+            return JSONResponse(status_code=404, content={"data":[]})
+        # Convert to list of dicts
+        dict_results = [row._asdict() for row in results]
+        print(dict_results)
+        return {"data":dict_results}
+    except Exception as e:
+        logging.exception(e)
+        raise HTTPException(status_code=500, detail={"message":"Internal server error"})

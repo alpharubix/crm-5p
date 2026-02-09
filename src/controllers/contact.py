@@ -1,4 +1,6 @@
 import math
+from datetime import datetime
+
 from fastapi import HTTPException
 from sqlalchemy import and_,or_
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,15 +12,14 @@ from ..models.contact import Contact
 from ..schemas.contact import ContactBase
 
 
-def create_contact(db: Session, data: ContactBase):
+def create_contact(db: Session, data: ContactBase,user_id:int):
     new_contact = Contact(
-        id=data.id,
         account_id=data.account_id,  # Link to Account
-        owner_id=data.owner_id,
-        modified_by_id=data.modified_by_id,
-        created_by_id=data.created_by_id,
-        created_time=data.created_time,
-        modified_time=data.modified_time,
+        owner_id=user_id,
+        modified_by_id=None, #for new contacts initially modified_by_id is none
+        created_by_id=user_id,
+        created_time=datetime.now().isoformat(),
+        modified_time=None, #for new contacts modified time is also none
         first_name=data.first_name,
         last_name=data.last_name,
         designation=data.designation,

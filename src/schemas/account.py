@@ -44,7 +44,7 @@ class AccountBase(BaseModel):
     # Identity & Contact (Required)
     first_name: str
     last_name: str
-    email: EmailStr
+    email: Optional[str] = None
     phone: str = Field(..., min_length=10, max_length=15)
     account_name: str
     # Workflow & Assignment (Optional)
@@ -107,10 +107,10 @@ class AccountBase(BaseModel):
 
 class AccountResponse(BaseModel):
     id: str
-    first_name: str
-    last_name: str
+    first_name: Any
+    last_name: Any
     account_name: str | None
-    email: EmailStr
+    email: Optional[str] = None
     phone: str
     business_status: str | None
     distributor_code: str | None
@@ -153,7 +153,7 @@ class GetAssociatedAccountResponse(BaseModel):
     id: int
     account_name: str | Any
     phone: str | Any = None
-    email: EmailStr | Any = None
+    email: Optional[str] = None
 
     @field_serializer("id")
     @classmethod
@@ -162,3 +162,14 @@ class GetAssociatedAccountResponse(BaseModel):
             return str(value)
         else:
             return value
+
+class AccountItem(BaseModel):
+    id: int | str
+    account_name: Any
+
+    @field_serializer("id")
+    def serialize_id(self, value):
+        return str(value)
+
+class ListAccountsResponse(BaseModel):
+    data: List[AccountItem]

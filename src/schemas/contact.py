@@ -7,8 +7,6 @@ from src.schemas.user import UserResponse
 
 
 class ContactBase(BaseModel):
-    # primary key
-    id: str
 
     # Identity
     first_name: Optional[str] = None
@@ -16,14 +14,7 @@ class ContactBase(BaseModel):
     designation: Optional[str] = None
 
     # relationship
-    owner_id: str
     account_id: str
-    modified_by_id: str
-    created_by_id: str
-
-    # time-capturing-fields
-    modified_time: str
-    created_time: str
 
     email: EmailStr
 
@@ -46,56 +37,12 @@ class ContactBase(BaseModel):
     # Flexible Fields (JSONB)
     custom_fields: Dict[str, Any] = {}
 
-    @field_validator("created_time", mode="after")
-    @classmethod
-    def parse_created_time(cls, value):
-        if isinstance(value, str):
-            date = datetime.fromisoformat(value)
-            return datetime.fromisoformat(value)
-        raise ValueError("created_time must be in string format")
-
-    @field_validator("modified_time", mode="after")
-    @classmethod
-    def parse_modified_time(cls, value):
-        if isinstance(value, str):
-            dt = datetime.fromisoformat(value)
-            return dt
-        raise ValueError("modified_time must be in string format")
-
-    @field_validator("modified_by_id", mode="after")
-    @classmethod
-    def parse_modified_by(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
-
-    @field_validator("created_by_id", mode="after")
-    @classmethod
-    def parse_created_by(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
-
-    @field_validator("id", mode="after")
-    @classmethod
-    def parse_id(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
-
     @field_validator("account_id", mode="after")
     @classmethod
     def parse_account_id(cls, value):
         if isinstance(value, str):
             return int(value)
         raise ValueError("account_id must be in string format")
-
-    @field_validator("owner_id", mode="after")
-    @classmethod
-    def parse_owner_id(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("owner_id must be in string format")
 
 
 class ContactResponse(BaseModel):
@@ -105,12 +52,12 @@ class ContactResponse(BaseModel):
     id: str
 
     # Identity
-    first_name: str | None = None
+    first_name: Any
     last_name: str | None = None
     designation: Optional[str] = None
 
     # Time capturing fields
-    modified_time: datetime
+    modified_time: datetime|None
     created_time: datetime
 
     # Communication
@@ -131,7 +78,7 @@ class ContactResponse(BaseModel):
 
     # Relationships
     created_by: UserResponse
-    modified_by: UserResponse
+    modified_by: UserResponse | None #because for new contacts modifieb_by_id is none
     contact_owner: UserResponse
     parent_account: Any  # Can be a dict or a model
 

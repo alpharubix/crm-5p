@@ -1,13 +1,14 @@
 from datetime import datetime
 from fastapi.exceptions import HTTPException
 from pymongo.synchronous.collection import Collection
+from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
+from ..models.account import Account
 
 
-def insert_notes(user_id, note, parent_id, db):
+def insert_notes(user_id, note, parent_id, db,pg_db:Session):
     try:
         user_coll = db['users']
-        acc_coll = db['Accounts']
         notes_coll = db['Notes']
 
         Owner = user_coll.find_one(
@@ -16,10 +17,9 @@ def insert_notes(user_id, note, parent_id, db):
         )
 
 
-        Parent_Id = acc_coll.find_one(
-            {"id": parent_id},
-            {"_id": 0, "id": 1, "Account_Name": 1}
-        )
+        raw_parent_acc = pg_db.query(Account.id.label('id'),Account.account_name.label('account_name')).filter(Account.id == int(parent_id)).one()  #for the newly migrated leads get the parent id from the postresql
+
+        Parent_Id = {"id":str(raw_parent_acc.id),"account_name":raw_parent_acc.account_name}
 
         Modified_By = None
 

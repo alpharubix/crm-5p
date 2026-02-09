@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException,File,UploadFile
 from fastapi.params import Body
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -10,7 +10,7 @@ from starlette.requests import Request
 from ..controllers import account as repo
 from ..database import get_db, get_mongodb
 from ..models.account import Account
-from ..schemas.account import AccountBase, GetlistAccountResponse
+from ..schemas.account import AccountBase, GetlistAccountResponse,ListAccountsResponse
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -80,9 +80,11 @@ async def update_account(
                 if isinstance(value, str):
                     try:
                         value = datetime.fromisoformat(value)
-                    except ValueError:
-                        pass
-                setattr(db_account, key, value)
+                        if value < datetime.now(timezone.utc):
+                            raise HTTPException(status_code=400, detail={"message": "Date should not be in the past"})
+                    except Exception as e:
+                        raise e
+                    setattr(db_account, key, value)
 
             else:
                 setattr(db_account, key, value)
@@ -111,3 +113,14 @@ async def update_account(
             status_code=400,
             detail=f"Database error: {str(e)}"
         )
+
+@router.post("/upload-accounts-csv")
+async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
+    #check if the file is in csv format or not
+    print("file is under processing")
+    response = await repo.accounts_csv_update(file, db)
+    return response
+
+@router.get("/lookup",response_model=ListAccountsResponse)
+def get_accounts_ids(account_name:str, db: Session = Depends(get_db)):
+    return repo.fetch_account_id(account_name,db)

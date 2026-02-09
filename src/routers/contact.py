@@ -13,9 +13,9 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 @router.post("")
 @router.post("/")
-def create(data: ContactBase, db: Session = Depends(get_db)):
-    return create_contact(data=data, db=db)
-
+def create(request:Request,data: ContactBase, db: Session = Depends(get_db)):
+    user_id = int(request.state.user_id)
+    return create_contact(data=data, db=db,user_id=user_id)
 
 @router.get("", response_model=ContactResponseList)
 @router.get("/", response_model=ContactResponseList)
