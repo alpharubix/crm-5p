@@ -10,8 +10,8 @@ class Account(Base):
     # Primary Key
     id = Column(BIGINT, primary_key=True,autoincrement=False)
     # Identity & Contact (Core)
-    first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=False)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     email = Column(String, unique=True, nullable=False, index=True)
     phone = Column(String, unique=False, nullable=False)
     account_name = Column(String, nullable=True,index=True)

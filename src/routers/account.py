@@ -10,7 +10,7 @@ from starlette.requests import Request
 from ..controllers import account as repo
 from ..database import get_db, get_mongodb
 from ..models.account import Account
-from ..schemas.account import AccountBase, GetlistAccountResponse
+from ..schemas.account import AccountBase, GetlistAccountResponse,AccountLookupResponse
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -119,3 +119,7 @@ async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(g
     #check if the file is in csv format or not
     response = await repo.accounts_csv_update(file, db)
     return response
+
+@router.get("/lookup",response_model=list[AccountLookupResponse])
+def get_accounts_ids(account_name:str, db: Session = Depends(get_db)):
+    return repo.fetch_account_id(account_name,db)

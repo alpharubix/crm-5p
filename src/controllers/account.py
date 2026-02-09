@@ -242,3 +242,25 @@ async def accounts_csv_update(file:UploadFile,db:Session):
             status_code=500,
             detail={"message": "Error processing CSV file"}
         )
+
+def fetch_account_id(account_name:str,db:Session):
+    try:
+        results = (
+            db.query(
+                Account.id.label("id"),
+                Account.account_name.label("account_name")
+            )
+            .filter(Account.account_name.ilike(f"%{account_name.strip()}%"))
+            .limit(10)
+            .all()
+        )
+        print(results)
+        if len(results) == 0:
+            return JSONResponse(status_code=404, content={"data":[]})
+        # Convert to list of dicts
+        dict_results = [row._asdict() for row in results]
+        print(dict_results)
+        return JSONResponse(status_code=200,content={"data": dict_results})
+    except Exception as e:
+        logging.exception(e)
+        raise HTTPException(status_code=500, detail={"message":"Internal server error"})

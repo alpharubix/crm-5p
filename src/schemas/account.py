@@ -162,3 +162,7 @@ class GetAssociatedAccountResponse(BaseModel):
             return str(value)
         else:
             return value
+
+class AccountLookupResponse(BaseModel):
+    id: int
+    account_name:  Any
