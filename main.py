@@ -1,7 +1,10 @@
+import os
+
 import uvicorn
 from fastapi import FastAPI
+from dotenv import load_dotenv
+load_dotenv(override=True)
 from fastapi.middleware.cors import CORSMiddleware
-
 from src.database import Base, engine
 from src.middleware.auth import authorization
 from src.routers import account as account_router
@@ -41,4 +44,4 @@ app.include_router(authentication_router)
 app.include_router(notes_router)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="localhost", port=8080, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT")))
