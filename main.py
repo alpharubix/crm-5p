@@ -44,4 +44,6 @@ app.include_router(authentication_router)
 app.include_router(notes_router)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT")))
+    # Cloud Run provides PORT as an env var; default to 8080 if not found
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
