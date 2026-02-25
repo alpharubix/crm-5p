@@ -47,3 +47,28 @@ def get_jwt_token(user_id:int,role:str):
 
 def get_decoded_jwt_token(token:str) -> dict:
     return jwt.decode(token,settings.JWT_SECRET_KEY,algorithms=['HS256'])
+
+
+def get_account_headers():
+    return  {
+    "id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "account_name",
+    "account_owner_id",
+    "account_status",
+    "account_stage",
+    "source",
+    "business_status",
+    "distributor_code",
+    "type_of_business",
+    "industry",
+    "city",
+    "state",
+    "pincode",
+    "waba_interested",
+    "call_back_date_time",
+    "custom_fields",
+}

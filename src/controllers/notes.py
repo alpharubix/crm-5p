@@ -6,7 +6,7 @@ from starlette.responses import JSONResponse
 from ..models.account import Account
 
 
-def insert_notes(user_id, note, parent_id, db,pg_db:Session):
+def insert_notes(user_id, note, parent_id, module_name,db,pg_db:Session):
     try:
         user_coll = db['users']
         notes_coll = db['Notes']
@@ -20,6 +20,7 @@ def insert_notes(user_id, note, parent_id, db,pg_db:Session):
         raw_parent_acc = pg_db.query(Account.id.label('id'),Account.account_name.label('account_name')).filter(Account.id == int(parent_id)).one()  #for the newly migrated leads get the parent id from the postresql
 
         Parent_Id = {"id":str(raw_parent_acc.id),"account_name":raw_parent_acc.account_name}
+
 
         Modified_By = None
 
@@ -36,6 +37,7 @@ def insert_notes(user_id, note, parent_id, db,pg_db:Session):
             "Modified_By": Modified_By,
             "Note_Content": note,
             "Parent_Id": Parent_Id,
+            "module":module_name,
             "Created_Time": datetime.now().isoformat(),
             "Modified_Time": datetime.now().isoformat(),
         })
@@ -65,6 +67,7 @@ def get_notes(acc_ids: list, notes_collection: Collection):
                 "Created_By": 1,
                 "Created_Time": 1,
                 "Modified_Time": 1,
+                "module":1,
             },
         )
         notes_map = {}

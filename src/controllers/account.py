@@ -10,9 +10,9 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
+from src.utility.utils import get_account_headers
 
 from ..models.account import Account
 from ..schemas.account import AccountBase, ListAccountsResponse
@@ -126,6 +126,7 @@ def get_all_accounts(
     if business_status:
         filters.append(Account.business_status == business_status)
     if call_back_date_time:
+        filters.append(Account.call_back_date_time != None)  # excludes NULLs explicitly
         filters.append(Account.call_back_date_time <= call_back_date_time)
     if phone_number and phone_number.strip():
         filters.append(
@@ -158,9 +159,9 @@ def get_all_accounts(
 
                 },
             )
+    print(filters)
     base_query = query.filter(and_(*filters)) if filters else query
     total_data_size = base_query.count()
-    print(base_query)
     data = (
         base_query.offset(offset)  # query performance optimization
         .options(
@@ -264,3 +265,28 @@ def fetch_account_id(account_name:str,db:Session):
     except Exception as e:
         logging.exception(e)
         raise HTTPException(status_code=500, detail={"message":"Internal server error"})
+
+# async def update_accounts_based_on_csv(file, db: Session):
+#     try:
+#         if not file.filename.endswith(".csv"):
+#             raise HTTPException(status_code=400, detail={"message": "only support csv file"})
+#         else:
+#             contents = await file.read()
+#             csv_data = io.BytesIO(contents)
+#             df = pd.read_csv(csv_data)
+#             if df.empty:
+#                 raise HTTPException(status_code=400, detail="Csv file is empty")
+#             else:
+#                 data = df.to_dict(orient="records")
+#                 account_headers = get_account_headers()
+
+
+
+
+
+
+
+
+
+
+
