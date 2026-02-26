@@ -70,5 +70,4 @@ def get_account_headers():
     "pincode",
     "waba_interested",
     "call_back_date_time",
-    "custom_fields",
 }

@@ -1,5 +1,6 @@
 import logging
 import math
+from cmath import nan
 from datetime import datetime
 from typing import Optional
 import io
@@ -279,6 +280,33 @@ def fetch_account_id(account_name:str,db:Session):
 #             else:
 #                 data = df.to_dict(orient="records")
 #                 account_headers = get_account_headers()
+#                 csv_headers = {col.strip().lower() for col in df.columns}
+#                 header_difference = account_headers - csv_headers
+#                 if header_difference:
+#                     raise HTTPException(status_code=400, detail={"message": f"Excel headers mismatch found fields-{header_difference}"})
+#                 else:
+#                   #segrigate creation row and updation rows
+#                   record_creation_list = []
+#                   record_update_list = []
+#                   for row in data:
+#                       is_new = pd.isna(row.get("id"))
+#                       if not is_new:
+#                           cleaned_row = {
+#                               key: value
+#                               for key, value in row.items()
+#                               if pd.notna(value)
+#                           }
+#                       else:
+#                           row.pop("id")
+#                       if is_new:
+#                           record_creation_list.append(row)
+#                       else:
+#                           record_update_list.append(cleaned_row)
+#
+#                   print(record_creation_list)
+#                   print(record_update_list)
+#     except Exception as e:
+#         raise e
 
 
 

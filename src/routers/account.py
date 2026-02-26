@@ -130,8 +130,7 @@ def get_accounts_ids(account_name:str, db: Session = Depends(get_db)):
     return repo.fetch_account_id(account_name,db)
 
 
-@router.post("/accounts-update-csv-upload")
-async def accounts_update_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
-    print("file is under processing")
-    pass
-    return None
+# @router.post("/accounts-update-csv-upload")
+# async def accounts_update_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
+#     await repo.update_accounts_based_on_csv(file, db)
+#     return {"message":"file upload success"}

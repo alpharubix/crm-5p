@@ -4,7 +4,7 @@ from pydantic import BaseModel, field_validator
 class Note(BaseModel):
     id: str
     note: str
-    module:str
+    module:str = "Accounts"
     @field_validator('id',mode='after')
     @classmethod
     def validate_note_id(cls, v):
