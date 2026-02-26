@@ -1,5 +1,4 @@
 import os
-
 import uvicorn
 from fastapi import FastAPI
 from dotenv import load_dotenv
@@ -46,4 +45,4 @@ app.include_router(notes_router)
 if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found
     port = int(os.getenv("PORT", 8080))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port,reload=True)

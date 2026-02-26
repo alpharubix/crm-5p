@@ -35,8 +35,10 @@ def list_all(
     account_status: str | None = None,
     account_name: Optional[str] = None,
     account_owner_id: Optional[int] = None,
+    industry: str |None= None,
     source: Optional[str] = None,
     phone: str | None = None,
+    call_back_date_time: str =None
 ):
     return repo.get_all_accounts(
         request=request,
@@ -51,7 +53,9 @@ def list_all(
         account_name=account_name,
         account_owner_id=account_owner_id,
         source=source,
-        phone_number=phone
+        phone_number=phone,
+        industry=industry,
+        call_back_date_time=call_back_date_time
         # map others only if they exist in repo
     )
 
@@ -114,7 +118,7 @@ async def update_account(
             detail=f"Database error: {str(e)}"
         )
 
-@router.post("/upload-accounts-csv")
+@router.post("/accounts-reassignment-csv-upload")
 async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
     #check if the file is in csv format or not
     print("file is under processing")
@@ -124,3 +128,9 @@ async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(g
 @router.get("/lookup",response_model=ListAccountsResponse)
 def get_accounts_ids(account_name:str, db: Session = Depends(get_db)):
     return repo.fetch_account_id(account_name,db)
+
+
+# @router.post("/accounts-update-csv-upload")
+# async def accounts_update_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
+#     await repo.update_accounts_based_on_csv(file, db)
+#     return {"message":"file upload success"}
