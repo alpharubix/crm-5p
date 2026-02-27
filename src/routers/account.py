@@ -38,10 +38,10 @@ def list_all(
     account_status: str | None = None,
     account_name: Optional[str] = None,
     account_owner_id: Optional[int] = None,
-    industry: str |None= None,
+    industry: str | None = None,
     source: Optional[str] = None,
     phone: str | None = None,
-    call_back_date_time: str =None
+    call_back_date_time: str = None,
 ):
     return repo.get_all_accounts(
         request=request,
@@ -58,7 +58,7 @@ def list_all(
         source=source,
         phone_number=phone,
         industry=industry,
-        call_back_date_time=call_back_date_time
+        call_back_date_time=call_back_date_time,
         # map others only if they exist in repo
     )
 
@@ -119,28 +119,34 @@ async def update_account(
 
 
 @router.post("/accounts-reassignment-csv-upload")
-async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
-    #check if the file is in csv format or not
-    print("file is under processing")
-    response = await repo.accounts_csv_update(file, db)
-    return response
-
-
-@router.post("/upload-accounts-csv")
 async def upload_accounts_csv(
     file: UploadFile = File(...), db: Session = Depends(get_db)
 ):
+    # check if the file is in csv format or not
     print("file is under processing")
     response = await repo.accounts_csv_update(file, db)
     return response
 
-@router.get("/lookup",response_model=ListAccountsResponse)
-def get_accounts_ids(account_name:str, db: Session = Depends(get_db)):
-    return repo.fetch_account_id(account_name,db)
+
+@router.get("/lookup", response_model=ListAccountsResponse)
+def get_accounts_ids(account_name: str, db: Session = Depends(get_db)):
+    return repo.fetch_account_id(account_name, db)
+
+
+@router.post("/accounts-update-csv-upload")
+async def accounts_update_csv(
+    request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)
+):
+    try:
+        user_id = request.state.user_id
+        return await repo.update_accounts_based_on_csv(file, db, user_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"unable to process csv error: {str(e)}"
+        )
 
 
 # @router.post("/accounts-update-csv-upload")
 # async def accounts_update_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
 #     await repo.update_accounts_based_on_csv(file, db)
 #     return {"message":"file upload success"}
-
