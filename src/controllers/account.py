@@ -1,9 +1,10 @@
+import io
 import logging
 import math
 from cmath import nan
 from datetime import datetime
 from typing import Optional
-import io
+
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
@@ -11,6 +12,8 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from src.controllers.audit_log import log_action
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 from src.utility.utils import get_account_headers
@@ -19,7 +22,9 @@ from ..models.account import Account
 from ..schemas.account import AccountBase, ListAccountsResponse
 
 
-def create_account(db: Session, data: AccountBase, created_by: str = "") -> Account:
+def create_account(
+    db: Session, data: AccountBase, user_id: int, user_role: str
+) -> Account:
     if db.query(Account).filter(Account.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email exists")
 
@@ -44,7 +49,7 @@ def create_account(db: Session, data: AccountBase, created_by: str = "") -> Acco
         waba_interested=data.waba_interested,
         call_back_date_time=data.call_back_date_time,
         custom_fields=data.custom_fields,
-        created_by_id=data.created_by_id,
+        created_by_id=user_id,
         created_time=data.created_time,
         modified_time=data.modified_time,
     )
@@ -52,6 +57,10 @@ def create_account(db: Session, data: AccountBase, created_by: str = "") -> Acco
     db.add(new_account)
     db.commit()
     db.refresh(new_account)
+
+    log_action(
+        db, user_id, user_role, "CREATED", "Account", new_account.id, data.model_dump()
+    )
     return new_account
 
 
@@ -134,13 +143,12 @@ def get_all_accounts(
             or_(
                 Account.phone.like(f"%{phone_number}%"),
                 Account.phone.like(f"%91{phone_number}%"),
-                Account.phone.like(f"%+91{phone_number}%")
+                Account.phone.like(f"%+91{phone_number}%"),
             )
         )
     if account_owner_id:
-
-        if role in ('super_admin', 'admin'):
-            filters.append(Account.account_owner_id==int(account_owner_id))
+        if role in ("super_admin", "admin"):
+            filters.append(Account.account_owner_id == int(account_owner_id))
         elif user_id not in MANAGER_EXECUTIVES_MAP:
             raise HTTPException(
                 status_code=403,
@@ -157,7 +165,6 @@ def get_all_accounts(
                 detail={
                     "message": "You do not have permission to access records for this account owner",
                     "success": False,
-
                 },
             )
     print(filters)
@@ -175,7 +182,9 @@ def get_all_accounts(
     )
     if len(data) != 0:
         account_ids = [acc.id for acc in data]
-        accounts_notes = get_notes(acc_ids=account_ids, notes_collection=mongodb['Notes'])
+        accounts_notes = get_notes(
+            acc_ids=account_ids, notes_collection=mongodb["Notes"]
+        )
 
         for acc in data:
             acc.notes = accounts_notes.get(str(acc.id))
@@ -192,7 +201,7 @@ def get_all_accounts(
 
 
 def update_account(
-    db: Session, account_id: int, data: AccountBase, modified_by: str = ""
+    db: Session, account_id: int, data: AccountBase, user_id: int, user_role: str
 ) -> Account:
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
@@ -202,10 +211,12 @@ def update_account(
     for key, value in account_data.items():
         setattr(account, key, value)
 
-    account.modified_by = modified_by  # type: ignore
+    account.modified_by_id = user_id
 
     db.commit()
     db.refresh(account)
+
+    log_action(db, user_id, user_role, "UPDATED", "Account", account_id, account_data)
     return account
 
 
@@ -216,24 +227,31 @@ def get_account_by_id(db: Session, account_id: int) -> Account:
     return account
 
 
-async def accounts_csv_update(file:UploadFile,db:Session):
+async def accounts_csv_update(file: UploadFile, db: Session):
     try:
         if file.filename.endswith(".csv"):
-            #if the file is csv file process the file
+            # if the file is csv file process the file
             contents = await file.read()
             csv_data = io.BytesIO(contents)
             df = pd.read_csv(csv_data)
             data = df.to_dict(orient="records")
             if len(data) == 0:
-                return JSONResponse(status_code=400,content={"message": "At least 1 row is required"})
-            #after getting the data check the headers
-            required_headers = {"id","account_owner_id"}
+                return JSONResponse(
+                    status_code=400, content={"message": "At least 1 row is required"}
+                )
+            # after getting the data check the headers
+            required_headers = {"id", "account_owner_id"}
             csv_headers = set(data[0].keys())
             if required_headers != csv_headers:
-                return JSONResponse(status_code=400,content={"message": "Excel headers mismatch found"})
-            db.bulk_update_mappings(Account,data)
+                return JSONResponse(
+                    status_code=400, content={"message": "Excel headers mismatch found"}
+                )
+            db.bulk_update_mappings(Account, data)
             db.commit()
-            return JSONResponse(status_code=200, content={"message": f"{len(data)} accounts updated successfully"})
+            return JSONResponse(
+                status_code=200,
+                content={"message": f"{len(data)} accounts updated successfully"},
+            )
         else:
             return JSONResponse(status_code=422, content="Only csv files are supported")
     except Exception as e:
@@ -241,28 +259,25 @@ async def accounts_csv_update(file:UploadFile,db:Session):
         db.rollback()
         logging.exception("CSV account update failed")
         raise HTTPException(
-            status_code=500,
-            detail={"message": "Error processing CSV file"}
+            status_code=500, detail={"message": "Error processing CSV file"}
         )
 
-def fetch_account_id(account_name:str,db:Session):
+
+def fetch_account_id(account_name: str, db: Session):
     try:
         results = (
-            db.query(
-                Account.id.label("id"),
-                Account.account_name.label("account_name")
-            )
+            db.query(Account.id.label("id"), Account.account_name.label("account_name"))
             .filter(Account.account_name.ilike(f"%{account_name.strip()}%"))
             .limit(10)
             .all()
         )
         print(results)
         if len(results) == 0:
-            return JSONResponse(status_code=404, content={"data":[]})
+            return JSONResponse(status_code=404, content={"data": []})
         # Convert to list of dicts
         dict_results = [row._asdict() for row in results]
         print(dict_results)
-        return {"data":dict_results}
+        return {"data": dict_results}
     except Exception as e:
         logging.exception(e)
         raise HTTPException(status_code=500, detail={"message":"Internal server error"})
@@ -318,3 +333,6 @@ def fetch_account_id(account_name:str,db:Session):
 
 
 
+        raise HTTPException(
+            status_code=500, detail={"message": "Internal server error"}
+        )

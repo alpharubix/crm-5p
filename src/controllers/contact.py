@@ -2,24 +2,25 @@ import math
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import and_,or_
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload, session
 from starlette.requests import Request
 
-from .auth import MANAGERID
 from ..models.contact import Contact
 from ..schemas.contact import ContactBase
+from .audit_log import log_action
+from .auth import MANAGERID
 
 
-def create_contact(db: Session, data: ContactBase,user_id:int):
+def create_contact(db: Session, data: ContactBase, user_id: int, user_role: str):
     new_contact = Contact(
-        account_id=data.account_id,  # Link to Account
+        account_id=data.account_id,
         owner_id=user_id,
-        modified_by_id=None, #for new contacts initially modified_by_id is none
+        modified_by_id=None,
         created_by_id=user_id,
-        created_time=datetime.now().isoformat(),
-        modified_time=None, #for new contacts modified time is also none
+        created_time=datetime.now(),
+        modified_time=None,
         first_name=data.first_name,
         last_name=data.last_name,
         designation=data.designation,
@@ -35,10 +36,13 @@ def create_contact(db: Session, data: ContactBase,user_id:int):
         pincode=data.pincode,
         custom_fields=data.custom_fields,
     )
-
     db.add(new_contact)
     db.commit()
     db.refresh(new_contact)
+
+    log_action(
+        db, user_id, user_role, "CREATED", "Contact", new_contact.id, data.model_dump()
+    )
     return new_contact
 
 
@@ -91,9 +95,19 @@ def get_all_contacts(
     if full_name and full_name.strip():
         filters.append(Contact.last_name.ilike(f"%{full_name.strip()}%"))
     if phone and phone.strip():
-        filters.append(or_(Contact.mobile.startswith(phone), Contact.mobile.startswith(f'+91{phone}')))
+        filters.append(
+            or_(
+                Contact.mobile.startswith(phone),
+                Contact.mobile.startswith(f"+91{phone}"),
+            )
+        )
     if mobile and mobile.strip():
-        filters.append(or_(Contact.mobile.startswith(mobile),Contact.mobile.startswith(f'+91{mobile}')))
+        filters.append(
+            or_(
+                Contact.mobile.startswith(mobile),
+                Contact.mobile.startswith(f"+91{mobile}"),
+            )
+        )
     base_query = query.filter(and_(*filters)) if filters else query
 
     total_data_size = base_query.count()
@@ -119,26 +133,31 @@ def get_all_contacts(
         },
     }
 
-def update_contacts(request:Request,contact_id:int,body:dict,db:session):
+
+def update_contacts(request: Request, contact_id: int, body: dict, db: Session):
     try:
         contact = db.query(Contact).filter(Contact.id == contact_id).first()
-
         if not contact:
-            raise HTTPException(status_code=404, detail=({"msg":"No Contact found"}))
-        else:
-            for key,value in body.items():
-                if value == '' or None:
-                    setattr(contact, key, None)
-                elif hasattr(contact,key):
-                    setattr(contact, key, value)
-            user_id = request.state.user_id
-            setattr(contact,"modified_by_id",int(user_id))
-            db.commit()
-            db.refresh(contact)
-            return {"message": "update-success", "updated_contact":contact}
+            raise HTTPException(status_code=404, detail={"msg": "No Contact found"})
+
+        for key, value in body.items():
+            if value == "" or value is None:
+                setattr(contact, key, None)
+            elif hasattr(contact, key):
+                setattr(contact, key, value)
+
+        user_id = int(request.state.user_id)
+        user_role = request.state.role
+        setattr(contact, "modified_by_id", user_id)
+        db.commit()
+        db.refresh(contact)
+
+        log_action(db, user_id, user_role, "UPDATED", "Contact", contact_id, body)
+        return {"message": "update-success", "updated_contact": contact}
+
     except HTTPException as e:
         raise e
     except Exception as e:
         print(e)
         db.rollback()
-        raise HTTPException(status_code=500, detail=({"msg":"Internal server error"}))
+        raise HTTPException(status_code=500, detail={"msg": "Internal server error"})

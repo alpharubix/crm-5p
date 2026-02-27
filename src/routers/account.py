@@ -1,24 +1,27 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException,File,UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.params import Body
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from starlette.requests import Request
 
 from ..controllers import account as repo
+from ..controllers.audit_log import log_action
 from ..database import get_db, get_mongodb
 from ..models.account import Account
-from ..schemas.account import AccountBase, GetlistAccountResponse,ListAccountsResponse
+from ..schemas.account import AccountBase, GetlistAccountResponse, ListAccountsResponse
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
 @router.post("/")
 @router.post("")
-def create(data: AccountBase, db: Session = Depends(get_db)):
-    return repo.create_account(db, data)
+def create(request: Request, data: AccountBase, db: Session = Depends(get_db)):
+    user_id = int(request.state.user_id)
+    user_role = request.state.role
+    return repo.create_account(db, data, user_id=user_id, user_role=user_role)
 
 
 @router.get("/", response_model=GetlistAccountResponse)
@@ -59,68 +62,74 @@ def list_all(
         # map others only if they exist in repo
     )
 
+
 @router.put("/{account_id}")
 async def update_account(
+    request: Request,
     account_id: int,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
 ):
-    db_account = db.query(Account).filter(Account.id == account_id).first()
+    user_id = int(request.state.user_id)
+    user_role = request.state.role
 
+    db_account = db.query(Account).filter(Account.id == account_id).first()
     if not db_account:
         raise HTTPException(status_code=404, detail={"msg": "Account not found"})
 
-    # Copy existing JSON safely
     custom_fields_dict = dict(db_account.custom_fields or {})
-
     for key, value in payload.items():
-
         if hasattr(db_account, key):
-
-            if value == '' or value is None:
+            if value == "" or value is None:
                 setattr(db_account, key, None)
-
             elif "time" in key or "date" in key:
                 if isinstance(value, str):
                     try:
                         value = datetime.fromisoformat(value)
                         if value < datetime.now(timezone.utc):
-                            raise HTTPException(status_code=400, detail={"message": "Date should not be in the past"})
+                            raise HTTPException(
+                                status_code=400,
+                                detail={"message": "Date should not be in the past"},
+                            )
                     except Exception as e:
                         raise e
                     setattr(db_account, key, value)
-
             else:
                 setattr(db_account, key, value)
-
         else:
-            if value == '' or value is None:
+            if value == "" or value is None:
                 custom_fields_dict[key] = None
             else:
                 custom_fields_dict[key] = value
 
-    # Assign + mark JSON dirty
     db_account.custom_fields = custom_fields_dict
     flag_modified(db_account, "custom_fields")
+    db_account.modified_by_id = user_id
 
-    # Save changes
     try:
         db.commit()
         db.refresh(db_account)
-        return {
-            "message": "update-success",
-            "updated_account": db_account
-        }
+        log_action(db, user_id, user_role, "UPDATED", "Account", account_id, payload)
+        return {"message": "update-success", "updated_account": db_account}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
 
 @router.post("/accounts-reassignment-csv-upload")
 async def upload_accounts_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
     #check if the file is in csv format or not
+    print("file is under processing")
+    response = await repo.accounts_csv_update(file, db)
+    return response
+
+
+@router.post("/upload-accounts-csv")
+async def upload_accounts_csv(
+    file: UploadFile = File(...), db: Session = Depends(get_db)
+):
     print("file is under processing")
     response = await repo.accounts_csv_update(file, db)
     return response
@@ -134,3 +143,4 @@ def get_accounts_ids(account_name:str, db: Session = Depends(get_db)):
 # async def accounts_update_csv(file:UploadFile=File(...), db: Session = Depends(get_db)):
 #     await repo.update_accounts_based_on_csv(file, db)
 #     return {"message":"file upload success"}
+
