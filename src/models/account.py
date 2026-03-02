@@ -8,7 +8,7 @@ class Account(Base):
     __tablename__ = "accounts"
 
     # Primary Key
-    id = Column(BIGINT, primary_key=True,autoincrement=False)
+    id = Column(BIGINT, primary_key=True,autoincrement=True)
     # Identity & Contact (Core)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)

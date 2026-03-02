@@ -1,7 +1,9 @@
+import csv
 import io
 import logging
 import math
 from cmath import nan
+from ctypes.wintypes import BOOL
 from datetime import datetime
 from typing import Optional
 
@@ -9,6 +11,7 @@ import pandas as pd
 from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload, selectinload
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -211,8 +214,6 @@ def update_account(
     for key, value in account_data.items():
         setattr(account, key, value)
 
-    account.modified_by_id = user_id
-
     db.commit()
     db.refresh(account)
 
@@ -280,59 +281,159 @@ def fetch_account_id(account_name: str, db: Session):
         return {"data": dict_results}
     except Exception as e:
         logging.exception(e)
-        raise HTTPException(status_code=500, detail={"message":"Internal server error"})
-
-# async def update_accounts_based_on_csv(file, db: Session):
-#     try:
-#         if not file.filename.endswith(".csv"):
-#             raise HTTPException(status_code=400, detail={"message": "only support csv file"})
-#         else:
-#             contents = await file.read()
-#             csv_data = io.BytesIO(contents)
-#             df = pd.read_csv(csv_data)
-#             if df.empty:
-#                 raise HTTPException(status_code=400, detail="Csv file is empty")
-#             else:
-#                 data = df.to_dict(orient="records")
-#                 account_headers = get_account_headers()
-#                 csv_headers = {col.strip().lower() for col in df.columns}
-#                 header_difference = account_headers - csv_headers
-#                 if header_difference:
-#                     raise HTTPException(status_code=400, detail={"message": f"Excel headers mismatch found fields-{header_difference}"})
-#                 else:
-#                   #segrigate creation row and updation rows
-#                   record_creation_list = []
-#                   record_update_list = []
-#                   for row in data:
-#                       is_new = pd.isna(row.get("id"))
-#                       if not is_new:
-#                           cleaned_row = {
-#                               key: value
-#                               for key, value in row.items()
-#                               if pd.notna(value)
-#                           }
-#                       else:
-#                           row.pop("id")
-#                       if is_new:
-#                           record_creation_list.append(row)
-#                       else:
-#                           record_update_list.append(cleaned_row)
-#
-#                   print(record_creation_list)
-#                   print(record_update_list)
-#     except Exception as e:
-#         raise e
-
-
-
-
-
-
-
-
-
-
-
         raise HTTPException(
             status_code=500, detail={"message": "Internal server error"}
         )
+
+
+def update_and_insert_accounts(insertion_accounts, updation_accounts, db: Session):
+    inserted = 0
+    updated = 0
+    failed_accounts = []
+
+    for acc in insertion_accounts:
+        try:
+            account = Account(**acc)
+            db.add(account)
+            db.commit()
+            db.refresh(account)
+            inserted += 1
+        except SQLAlchemyError as e:
+            db.rollback()
+            failed_accounts.append({"type": "insert", "data": acc, "error": str(e)})
+    for acc in updation_accounts:
+        try:
+            account = db.query(Account).filter(Account.id == acc["id"]).first()
+            if not account:
+                raise ValueError("Account ID not found")
+
+            for key, value in acc.items():
+                setattr(account, key, value)
+            try:
+                db.commit()
+                db.refresh(account)
+                updated += 1
+            except SQLAlchemyError as e:
+                raise e
+        except Exception as e:
+            print(e, acc.get("id"))
+            db.rollback()
+            failed_accounts.append(
+                {"type": "update", "id": acc.get("id"), "error": str(e)}
+            )
+
+    return {"inserted": inserted, "updated": updated, "failed": failed_accounts}
+
+
+async def update_accounts_based_on_csv(file, db: Session, user_id: int):
+    try:
+        # Validate file type
+        if not file.filename.endswith(".csv"):
+            raise HTTPException(
+                status_code=400, detail={"message": "only support csv file"}
+            )
+
+        contents = await file.read()
+        decoded = contents.decode("utf-8").splitlines()
+
+        reader = csv.DictReader(decoded)
+
+        data = list(reader)
+
+        if not data:
+            raise HTTPException(status_code=400, detail="Csv file is empty")
+
+        # Header validation
+        account_headers = get_account_headers()
+        csv_headers = {col.strip().lower() for col in reader.fieldnames}
+
+        header_difference = account_headers - csv_headers
+
+        if header_difference:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"Excel headers mismatch found fields-{header_difference}"
+                },
+            )
+
+        insertion_accounts = []
+        updation_accounts = []
+        error_list = []
+        row_number = 1
+        for row in data:
+            row_number += 1
+            # Convert empty strings to None
+            row = {
+                k: (v.strip() if v and v.strip() != "" else None)
+                for k, v in row.items()
+            }
+
+            is_new = not row.get("id")
+
+            # 🔹 Convert ID
+            if row.get("id"):
+                try:
+                    row["id"] = int(row["id"])
+                except ValueError:
+                    print("id is not an integer")
+                    raise ValueError("id must be an integer")
+
+            # Convert datetime
+            if row.get("call_back_date_time"):
+                try:
+                    row["call_back_date_time"] = datetime.strptime(
+                        row["call_back_date_time"], "%m/%d/%Y %H:%M"
+                    )
+                except ValueError:
+                    raise ValueError("Invalid date format in call_back_date_time")
+
+            else:
+                row["call_back_date_time"] = None
+
+            # Convert boolean
+            if row.get("waba_interested"):
+                val = row["waba_interested"].lower()
+                if val in ["yes", "true", "1"]:
+                    row["waba_interested"] = True
+                elif val in ["no", "false", "0"]:
+                    row["waba_interested"] = False
+                else:
+                    raise ValueError("Invalid waba interest value")
+            else:
+                row["waba_interested"] = None
+
+            # Separate create vs update
+            if is_new:
+                row.pop("id")
+                if (
+                    row.get(
+                        "account_owner_id",
+                    )
+                    is None
+                ):
+                    row["account_owner_id"] = user_id
+                row["created_by_id"] = int(user_id)
+                insertion_accounts.append(row)
+            else:
+                cleaned_row = {k: v for k, v in row.items() if v is not None}
+                updation_accounts.append(cleaned_row)
+        print(insertion_accounts)
+        print(updation_accounts)
+        db_result = update_and_insert_accounts(
+            insertion_accounts, updation_accounts, db
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "total_inserted": db_result["inserted"],
+                "total_updated": db_result["updated"],
+                "row_errors": error_list + db_result["failed"],
+            },
+        )
+
+    except Exception as e:
+        error_list.append({"row": row_number, "error": str(e)})
+    finally:
+        if len(insertion_accounts) == 0 and len(updation_accounts) == 0:
+            return {"total_inserted": 0, "total_updated": 0, "row_errors": error_list}
