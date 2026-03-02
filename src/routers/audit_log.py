@@ -27,12 +27,12 @@ def get_audit_logs(request: Request, page: int = 1, db: Session = Depends(get_db
     return {
         "data": [
             {
-                "id": log.id,
-                "user_id": log.user_id,
+                "id": str(log.id),
+                "user_id": str(log.user_id),
                 "user_role": log.user_role,
                 "action": log.action,
                 "entity": log.entity,
-                "entity_id": log.entity_id,
+                "entity_id": str(log.entity_id),
                 "payload": log.payload,
                 "created_at": log.created_at.strftime("%d %b %Y, %I:%M %p"),
             }
