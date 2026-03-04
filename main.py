@@ -9,7 +9,7 @@ from src.routers import contact as contact_router
 from src.routers import user as user_router
 from src.routers.authentication import authentication_router
 from src.routers.notes import notes_router
-
+from src.routers.deals import deals_router
 import os
 
 import uvicorn
@@ -48,6 +48,7 @@ app.include_router(user_router.router)
 app.include_router(authentication_router)
 app.include_router(notes_router)
 app.include_router(audit_log_router.router)
+app.include_router(deals_router)
 
 if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found
