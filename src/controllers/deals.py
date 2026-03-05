@@ -1,5 +1,4 @@
 import math
-
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from src.models.deal import Deal

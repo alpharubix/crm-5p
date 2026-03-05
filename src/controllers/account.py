@@ -170,7 +170,6 @@ def get_all_accounts(
                     "success": False,
                 },
             )
-    print(filters)
     base_query = query.filter(and_(*filters)) if filters else query
     total_data_size = base_query.count()
     data = (
@@ -179,6 +178,7 @@ def get_all_accounts(
             selectinload(Account.owner),
             selectinload(Account.created_by),
             selectinload(Account.account_linked_contact),
+            selectinload(Account.deals)
         )
         .limit(limit)
         .all()
@@ -188,7 +188,6 @@ def get_all_accounts(
         accounts_notes = get_notes(
             acc_ids=account_ids, notes_collection=mongodb["Notes"]
         )
-
         for acc in data:
             acc.notes = accounts_notes.get(str(acc.id))
     total_pages = math.ceil(total_data_size / limit)
