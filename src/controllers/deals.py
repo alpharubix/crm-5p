@@ -52,7 +52,7 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
             "page_info": {
                 "total_pages": total_pages,
                 "page": page,
-                "data_size": limit,
+                "data_size": total_records,
             },
         }
     except Exception as e:
