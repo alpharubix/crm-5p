@@ -1,7 +1,7 @@
 from sqlalchemy import (BigInteger, Boolean, Column, Date, Integer,
-                        Numeric, String, Text, DateTime, func)
+                        Numeric, String, Text, DateTime, func, ForeignKey)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, relationship
 from ..database import Base
 
 
@@ -11,7 +11,9 @@ class Deal(Base):
 
     # Primary Key
     id                  = Column(BigInteger, primary_key=True, autoincrement=True)
-
+    #relationship
+    account_id = Column(Integer, ForeignKey("accounts.id"))
+    account = relationship("Account", back_populates="deals")
     # Deal & Ticket Info
     ticket_id           = Column(Integer)
     ticket_number       = Column(BigInteger)
@@ -64,7 +66,6 @@ class Deal(Base):
     modified_by         = Column(BigInteger)
 
     # Account
-    account_id          = Column(BigInteger)
     account_name        = Column(String(100))
 
     # Timestamps

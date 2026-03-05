@@ -60,3 +60,4 @@ class Account(Base):
         foreign_keys=[account_owner_id],
         backref="account_owner"
     )
+    deals = relationship("Deal", back_populates="account")
