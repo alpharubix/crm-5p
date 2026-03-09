@@ -1,14 +1,12 @@
-from sqlalchemy import (BigInteger, Boolean, Column, Date, Integer,
-                        Numeric, String, Text, DateTime, func, ForeignKey)
+from sqlalchemy import (BigInteger, Boolean, Column, Date, Integer,Numeric, String, Text, DateTime, func, ForeignKey)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from ..database import Base
 
 
 
 class Deal(Base):
     __tablename__ = "deals"
-
     # Primary Key
     id                  = Column(BigInteger, primary_key=True, autoincrement=True)
     #relationship
@@ -72,3 +70,4 @@ class Deal(Base):
     created_at          = Column(DateTime, nullable=False, server_default=func.now())
     updated_at          = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
     deal_owner_id       = Column(BigInteger)
+    crm_deal_id         = Column(BigInteger)

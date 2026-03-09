@@ -68,12 +68,10 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-def get_notes(acc_ids: list, notes_collection: Collection):
-    acc_ids = [str(x) for x in acc_ids]
-
+def get_notes(id_list: list, notes_collection: Collection):
     try:
         notes_cursor = notes_collection.find(
-            {"Parent_Id.id": {"$in": acc_ids}},
+            {"Parent_Id.id": {"$in":id_list}},
             {
                 "_id": 0,
                 "Owner": 1,
@@ -87,10 +85,8 @@ def get_notes(acc_ids: list, notes_collection: Collection):
             },
         )
 
-        notes_map = {}
-
+        notes = []
         for note in notes_cursor:
-
             if note.get("Created_Time"):
                 created = datetime.fromisoformat(note["Created_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
                 note["Created_Time"] = created.strftime("%d %b %Y, %I:%M %p")
@@ -98,15 +94,8 @@ def get_notes(acc_ids: list, notes_collection: Collection):
             if note.get("Modified_Time"):
                 modified = datetime.fromisoformat(note["Modified_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
                 note["Modified_Time"] = modified.strftime("%d %b %Y, %I:%M %p")
-
-            p_id = note.get("Parent_Id").get("id")
-
-            if p_id not in notes_map:
-                notes_map[p_id] = []
-
-            notes_map[p_id].append(note)
-
-        return notes_map
+            notes.append(note)
+        return notes
 
     except Exception as e:
         print(e)
