@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-
+from zoneinfo import ZoneInfo
+IST = ZoneInfo("Asia/Kolkata")
 from ..database import get_db
 from ..models.audit_log import AuditLog
 
@@ -34,7 +35,7 @@ def get_audit_logs(request: Request, page: int = 1, db: Session = Depends(get_db
                 "entity": log.entity,
                 "entity_id": str(log.entity_id),
                 "payload": log.payload,
-                "created_at": log.created_at.strftime("%d %b %Y, %I:%M %p"),
+                "created_at": log.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
             }
             for log in logs
         ],
