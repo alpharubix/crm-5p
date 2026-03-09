@@ -7,7 +7,11 @@ from starlette.responses import JSONResponse
 
 from ..models.account import Account
 from .audit_log import log_action
+from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+IST = ZoneInfo("Asia/Kolkata")
 
 def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Session):
     try:
@@ -41,8 +45,8 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             "Note_Content": note,
             "Parent_Id": Parent_Id,
             "module":module_name,
-            "Created_Time": datetime.now().isoformat(),
-            "Modified_Time": datetime.now().isoformat(),
+            "Created_Time": datetime.now(timezone.utc).isoformat(),
+            "Modified_Time": datetime.now(timezone.utc).isoformat(),
         })
         print("Insertion result",result)
 
@@ -66,6 +70,7 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
 
 def get_notes(acc_ids: list, notes_collection: Collection):
     acc_ids = [str(x) for x in acc_ids]
+
     try:
         notes_cursor = notes_collection.find(
             {"Parent_Id.id": {"$in": acc_ids}},
@@ -78,18 +83,34 @@ def get_notes(acc_ids: list, notes_collection: Collection):
                 "Created_By": 1,
                 "Created_Time": 1,
                 "Modified_Time": 1,
-                "module":1,
+                "module": 1,
             },
         )
+
         notes_map = {}
+
         for note in notes_cursor:
+
+            if note.get("Created_Time"):
+                created = datetime.fromisoformat(note["Created_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
+                note["Created_Time"] = created.strftime("%d %b %Y, %I:%M %p")
+
+            if note.get("Modified_Time"):
+                modified = datetime.fromisoformat(note["Modified_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
+                note["Modified_Time"] = modified.strftime("%d %b %Y, %I:%M %p")
+
             p_id = note.get("Parent_Id").get("id")
+
             if p_id not in notes_map:
                 notes_map[p_id] = []
+
             notes_map[p_id].append(note)
+
         return notes_map
+
     except Exception as e:
         print(e)
         raise HTTPException(
-            status_code=500, detail={"message": "Internal server error"}
+            status_code=500,
+            detail={"message": "Internal server error"},
         )
