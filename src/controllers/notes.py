@@ -114,7 +114,7 @@ def get_notes(id_list: list, notes_collection: Collection):
         )
 
 def map_user_name_with_id(note_text:str)->str:
-    pattern = r"zsu\[@user(\d+)\]zsu|crm\[user#(\d+)\]crm"
+    pattern = r"zsu\[@user:(\d+)\]zsu|crm\[user#(\d+)#(\d+)\]crm"
     def replace(match):
         user_id = match.group(1) if match.group(1) else match.group(2)
 
@@ -129,7 +129,7 @@ def map_user_name_with_id(note_text:str)->str:
 
 
 def is_note_has_comment(note_text: str) -> bool:
-    pattern = re.compile(r"crm\[user:#(\d+)\]crm")
+    pattern = re.compile(r"crm\[user#(\d+)\]crm")
     return bool(pattern.search(note_text))
 
 
@@ -138,7 +138,7 @@ def mentions(note,module_name,parent_id,user_coll):
         is_note_there = is_note_has_comment(note)
         print("is_note_there",is_note_there)
         if is_note_there: #mention is there in the comment
-            pattern = re.compile(r"crm\[user:#(\d+)\]crm")
+            pattern = re.compile(r"crm\[user#(\d+)\]crm")
             user_ids = pattern.findall(note)
             users = user_coll.find(
                 {"id": {"$in": list(user_ids)}},

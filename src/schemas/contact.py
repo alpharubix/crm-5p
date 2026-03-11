@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_serializer, field_validator
 
-from src.schemas.user import UserResponse
+from src.schemas.user import UserResponseAccount
+
 
 
 class ContactBase(BaseModel):
@@ -77,9 +78,9 @@ class ContactResponse(BaseModel):
     pincode: Optional[str] = None
 
     # Relationships
-    created_by: UserResponse
-    modified_by: UserResponse | None #because for new contacts modifieb_by_id is none
-    contact_owner: UserResponse
+    created_by: UserResponseAccount | None
+    modified_by: UserResponseAccount | None #because for new contacts modifieb_by_id is none
+    contact_owner: UserResponseAccount | None
     parent_account: Any  # Can be a dict or a model
 
     # Flexible Fields

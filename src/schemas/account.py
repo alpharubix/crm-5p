@@ -11,7 +11,7 @@ from pydantic import (
 )
 
 from src.schemas.contact import ContactResponse
-from src.schemas.user import UserResponse
+from src.schemas.user import UserResponseAccount
 from src.schemas.deals import DealSchema
 
 # Account Status Options
@@ -135,8 +135,8 @@ class AccountResponse(BaseModel):
     created_time: Optional[datetime] = None
     modified_time: Optional[datetime] = None
 
-    created_by: Optional["UserResponse"] = None
-    owner: Optional["UserResponse"] = None
+    created_by: Optional[UserResponseAccount] = None
+    owner:  Optional[UserResponseAccount] = None
     account_linked_contact: Optional[List["ContactResponse"]] = None
     deals: Optional[List["DealSchema"]] = None
 

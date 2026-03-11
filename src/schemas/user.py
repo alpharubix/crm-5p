@@ -78,3 +78,13 @@ class UserResponseList(BaseModel):
 
 class UserFilterResponse(BaseModel):
     data: List[UserFilterMode] = []
+
+class UserResponseAccount(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+    @field_validator("id", mode="after")
+    @classmethod
+    def parse_id(cls, value):
+        return str(value)
