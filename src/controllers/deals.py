@@ -2,7 +2,7 @@ import math
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session,selectinload
 
 from src.schemas.deals import DealCreationBody, IST
 from src.controllers.audit_log import log_action
@@ -30,25 +30,7 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
             filters.append(Deal.id == deal_id)
 
         total_records = db.query(Deal).filter(*filters).count()
-        deals = db.query(Deal).filter(*filters).offset(offset).limit(limit).all()
-        for deal in deals:
-                if deal.id:
-                    deal.id = str(deal.id)
-
-                if deal.deal_owner_id:
-                    deal.deal_owner_id = str(deal.deal_owner_id)
-
-                if deal.assignee_id:
-                    deal.assignee_id = str(deal.assignee_id)
-
-                if deal.account_id:
-                    deal.account_id = str(deal.account_id)
-
-                if deal.created_by:
-                    deal.created_by = str(deal.created_by)
-
-                if deal.modified_by:
-                    deal.modified_by = str(deal.modified_by)
+        deals = db.query(Deal).filter(*filters).options(selectinload(Deal.owner)).offset(offset).limit(limit).all()
         total_pages = math.ceil(total_records / limit)
 
         return {
@@ -60,6 +42,7 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
             },
         }
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail={"message": "Internal Server Error"})
 
 def create_deal(deal:DealCreationBody,db:Session,user_id,user_role):
@@ -112,6 +95,10 @@ def create_deal(deal:DealCreationBody,db:Session,user_id,user_role):
         db.add(created_deal)
         db.commit()
         db.refresh(created_deal)
+
+        log_action(
+            db, user_id, user_role, "CREATED", "DEAL", created_deal.id, deal.model_dump()
+        )
         return created_deal
 
     except Exception as e:
