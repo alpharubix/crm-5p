@@ -39,7 +39,7 @@ class Deal(Base):
     deal_call_back_datetime     = Column(Date)
     disbursement_date           = Column(Date)
     lender_login_date           = Column(Date)
-    loan_start_date             = Column(Date)
+    loan_start_date           = Column(Date)
     loan_end_date               = Column(Date)
     targeted_disbursement_date  = Column(Date)
     tenure                      = Column(Integer)

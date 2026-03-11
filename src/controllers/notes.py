@@ -103,6 +103,7 @@ def get_notes(id_list: list, notes_collection: Collection):
                 modified = datetime.fromisoformat(note["Modified_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
                 note["Modified_Time"] = modified.strftime("%d %b %Y, %I:%M %p")
             note["Note_Content"] = map_user_name_with_id(note["Note_Content"])
+            print(note)
             notes.append(note)
         return notes
 
@@ -114,9 +115,16 @@ def get_notes(id_list: list, notes_collection: Collection):
         )
 
 def map_user_name_with_id(note_text:str)->str:
-    pattern = r"zsu\[@user:(\d+)\]zsu|crm\[user#(\d+)#(\d+)\]crm"
+    pattern = r"zsu\[@user:(\d+)\]zsu|crm\[user#(\d+)#(\d+)\]crm|crm\[user#(\d+)\]crm"
     def replace(match):
-        user_id = match.group(1) if match.group(1) else match.group(2)
+        if match.group(1):  # zsu[@user:ID]zsu
+            user_id = match.group(1)
+        elif match.group(2):  # crm[user#ID#ID]crm
+            user_id = match.group(2)
+        elif match.group(4):  # crm[user#ID]crm
+            user_id = match.group(4)
+        else:
+            return match.group(0)  # no user_id found, return original
 
         if not user_id:
             return match.group(0)

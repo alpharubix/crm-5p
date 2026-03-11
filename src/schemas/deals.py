@@ -39,7 +39,7 @@ class DealSchema(BaseModel):
     deal_call_back_datetime: Optional[date]
     disbursement_date: Optional[date]
     lender_login_date: Optional[date]
-    loan_start_date: Optional[date]
+    closing_date: Optional[date]
     loan_end_date: Optional[date]
     targeted_disbursement_date: Optional[date]
     tenure: Optional[int]

@@ -2,7 +2,7 @@ import math
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session,selectinload
 
 from src.schemas.deals import DealCreationBody, IST
 from src.controllers.audit_log import log_action
@@ -60,6 +60,7 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
             },
         }
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail={"message": "Internal Server Error"})
 
 def create_deal(deal:DealCreationBody,db:Session,user_id,user_role):
