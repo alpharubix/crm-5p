@@ -64,7 +64,6 @@ def process_mention_emails(email_list):
     for email in email_list:
         mail = {"email_address":email.get('user_email_address'),"body":prepare_mail_body(module_name=email.get('module'),parent_id=email.get('entity_id'),user_name=email.get('user_name'),note=email.get('note'))}
         ready_emails.append(mail)
-    print("Emails ready to be sent:", ready_emails)
     send_email(ready_emails)
     return None
 

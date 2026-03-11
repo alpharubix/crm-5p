@@ -67,7 +67,8 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             note,
             module_name,
             parent_id,
-            user_coll
+            user_coll,
+            pg_db
         )
 
         return JSONResponse(
@@ -105,7 +106,6 @@ def get_notes(id_list: list, notes_collection: Collection):
                 modified = datetime.fromisoformat(note["Modified_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
                 note["Modified_Time"] = modified.strftime("%d %b %Y, %I:%M %p")
             note["Note_Content"] = map_user_name_with_id(note["Note_Content"])
-            print(note)
             notes.append(note)
         return notes
 
@@ -146,7 +146,6 @@ def is_note_has_comment(note_text: str) -> bool:
 def mentions(note,module_name,parent_id,user_coll,db:Session):
     try:#check if the note_content have mentions in them
         is_note_there = is_note_has_comment(note)
-        print("is_note_there",is_note_there)
         if is_note_there: #mention is there in the comment
             pattern = re.compile(r"crm\[user#(\d+)\]crm")
             user_ids = pattern.findall(note)
@@ -160,7 +159,6 @@ def mentions(note,module_name,parent_id,user_coll,db:Session):
                     "entity_id": parent_id,
                     "note": map_user_name_with_id(note)
                 })
-            print(email_list)
             #after collection all the emails of the user time to prepare the body and send the email
             mail.process_mention_emails(email_list)
             print("All emails sent successfully")
