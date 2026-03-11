@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_serializer, field_validator
 
+from src.controllers.notes import IST
 from src.schemas.user import UserResponseAccount
 
 
@@ -85,6 +86,13 @@ class ContactResponse(BaseModel):
 
     # Flexible Fields
     custom_fields: Dict[str, Any] = {}
+
+    @field_serializer("created_time", "modified_time")
+    def serialize_datetime(self, value):
+        if value:
+            dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return value
 
     @field_validator("id", mode="before")
     @classmethod

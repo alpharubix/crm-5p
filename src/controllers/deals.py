@@ -30,25 +30,7 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
             filters.append(Deal.id == deal_id)
 
         total_records = db.query(Deal).filter(*filters).count()
-        deals = db.query(Deal).filter(*filters).offset(offset).limit(limit).all()
-        for deal in deals:
-                if deal.id:
-                    deal.id = str(deal.id)
-
-                if deal.deal_owner_id:
-                    deal.deal_owner_id = str(deal.deal_owner_id)
-
-                if deal.assignee_id:
-                    deal.assignee_id = str(deal.assignee_id)
-
-                if deal.account_id:
-                    deal.account_id = str(deal.account_id)
-
-                if deal.created_by:
-                    deal.created_by = str(deal.created_by)
-
-                if deal.modified_by:
-                    deal.modified_by = str(deal.modified_by)
+        deals = db.query(Deal).filter(*filters).options(selectinload(Deal.owner)).offset(offset).limit(limit).all()
         total_pages = math.ceil(total_records / limit)
 
         return {

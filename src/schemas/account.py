@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import (
@@ -12,7 +12,7 @@ from pydantic import (
 
 from src.schemas.contact import ContactResponse
 from src.schemas.user import UserResponseAccount
-from src.schemas.deals import DealSchema
+from src.schemas.deals import DealSchema, IST
 
 # Account Status Options
 AccountStatusType = Literal[
@@ -146,6 +146,14 @@ class AccountResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+    @field_serializer("created_time", "modified_time","call_back_date_time")
+    def serialize_datetime(self, value):
+        if value:
+            dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            return value
 
     @field_validator("id", "created_by_id", mode="before")
     @classmethod
