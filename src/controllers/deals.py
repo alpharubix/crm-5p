@@ -31,6 +31,8 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
 
         total_records = db.query(Deal).filter(*filters).count()
         deals = db.query(Deal).filter(*filters).options(selectinload(Deal.owner)).offset(offset).limit(limit).all()
+        for deal in deals:
+            deal.payment_receipt = None
         total_pages = math.ceil(total_records / limit)
 
         return {

@@ -9,6 +9,7 @@ from src.database import get_db
 deals_router = APIRouter(prefix="/deals", tags=["deals"])
 
 
+@deals_router.get("",response_model=GetListDealResponse)
 @deals_router.get("/",response_model=GetListDealResponse)
 def get_deals_list(request:Request,db:Session=Depends(get_db),page: int = 1,deal_id : int | None = None):
     return get_deals(page, db, int(request.state.user_id), request.state.role, deal_id)
