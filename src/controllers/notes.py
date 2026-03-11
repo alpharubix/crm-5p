@@ -3,6 +3,8 @@ from fastapi.exceptions import HTTPException
 from pymongo.synchronous.collection import Collection
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
+
+from src.models.user import User
 from ..models.account import Account
 from .audit_log import log_action
 from datetime import timezone
@@ -141,22 +143,19 @@ def is_note_has_comment(note_text: str) -> bool:
     return bool(pattern.search(note_text))
 
 
-def mentions(note,module_name,parent_id,user_coll):
+def mentions(note,module_name,parent_id,user_coll,db:Session):
     try:#check if the note_content have mentions in them
         is_note_there = is_note_has_comment(note)
         print("is_note_there",is_note_there)
         if is_note_there: #mention is there in the comment
             pattern = re.compile(r"crm\[user#(\d+)\]crm")
             user_ids = pattern.findall(note)
-            users = user_coll.find(
-                {"id": {"$in": list(user_ids)}},
-                {"id": 1, "full_name": 1, "email": 1, "_id": 0}
-            )
+            users=db.query(User.id,User.full_name,User.email).filter(User.id.in_(user_ids))
             email_list = []  # holds the list of emails_id of user with the msg
             for user in users:
                 email_list.append({
-                    "user_name": user["full_name"],
-                    "user_email_address": user["email"],
+                    "user_name": user.full_name,
+                    "user_email_address": user.email,
                     "module": module_name,
                     "entity_id": parent_id,
                     "note": map_user_name_with_id(note)
