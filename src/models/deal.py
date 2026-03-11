@@ -1,14 +1,12 @@
-from sqlalchemy import (BigInteger, Boolean, Column, Date, Integer,
-                        Numeric, String, Text, DateTime, func, ForeignKey)
+from sqlalchemy import (BigInteger, Boolean, Column, Date, Integer,Numeric, String, Text, DateTime, func, ForeignKey)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from ..database import Base
 
 
 
 class Deal(Base):
     __tablename__ = "deals"
-
     # Primary Key
     id                  = Column(BigInteger, primary_key=True, autoincrement=True)
     #relationship
@@ -21,7 +19,7 @@ class Deal(Base):
     loan_type           = Column(String(150))
     type_of_login       = Column(String(50))
     type_of_case_login  = Column(String(50))
-    ticket_login        = Column(Boolean, default=False)
+    ticket_login        = Column(String(50))
     case_stage          = Column(String(50))
     case_status         = Column(String(50))
 
@@ -41,7 +39,7 @@ class Deal(Base):
     deal_call_back_datetime     = Column(Date)
     disbursement_date           = Column(Date)
     lender_login_date           = Column(Date)
-    loan_start_date             = Column(Date)
+    loan_start_date           = Column(Date)
     loan_end_date               = Column(Date)
     targeted_disbursement_date  = Column(Date)
     tenure                      = Column(Integer)
@@ -71,4 +69,10 @@ class Deal(Base):
     # Timestamps
     created_at          = Column(DateTime, nullable=False, server_default=func.now())
     updated_at          = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-    deal_owner_id       = Column(BigInteger)
+    deal_owner_id       = Column(BigInteger, ForeignKey("users.id"))
+    crm_deal_id         = Column(BigInteger)
+    owner               = relationship(    #user relationship
+        "User",
+        foreign_keys=[deal_owner_id],
+        backref="deals"  # auto-creates user.deals on the User model
+    )

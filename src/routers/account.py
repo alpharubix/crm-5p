@@ -24,8 +24,8 @@ def create(request: Request, data: AccountBase, db: Session = Depends(get_db)):
     return repo.create_account(db, data, user_id=user_id, user_role=user_role)
 
 
-@router.get("/", response_model=GetlistAccountResponse)
-@router.get("", response_model=GetlistAccountResponse)
+@router.get("/", response_model=GetlistAccountResponse,response_model_exclude_none=True)
+@router.get("", response_model=GetlistAccountResponse,response_model_exclude_none=True)
 def list_all(
     request: Request,
     account_id: int | None = None,

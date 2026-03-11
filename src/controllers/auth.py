@@ -89,3 +89,35 @@ class MANAGERID:
         # manager_id: [executive_ids]
     }
 
+users = {  #users for fast lookup
+    3899927000003497001: "Sudha S",
+    3899927000004429001: "Somasundaram S",
+    3899927000005114034: "Mamatha Rani",
+    3899927000005114066: "Ashwini R",
+    3899927000005965034: "Nitesh Prasad",
+    3899927000005965066: "Savitha G",
+    3899927000005965080: "Dhivyesh S Patel",
+    3899927000007961681: "Kavya K B",
+    3899927000007961697: "Hemanta kumar Palai",
+    3899927000007961713: "Santhosh S",
+    3899927000007961727: "Pallavi Gattu",
+    3899927000007961740: "Mailari Kumar",
+    3899927000007961754: "Bhuvana R",
+    3899927000007961770: "Timmalamma",
+    3899927000007961784: "Mitali Dutta",
+    3899927000013394001: "Ashwini R",
+    3899927000015079001: "Kalyan Kumar",
+    3899927000046992001: "Irudhaya John",
+    3899927000124423001: "Tech Manager",
+    3899927000005114050: "Sutapa Roy",
+    3899927000005114020: "Digamber Pandey",
+    3899927000005965018: "Arjun J",
+    3899927000004429017: "Sandip Kumar Jena",
+    3899927000004808001: "Ayush Dingane",
+    3899927000007673012: "Honnapa Nayak",
+    3899927000005114004: "Manjunath Jain",
+    3899927000005965050: "Sahil Kispotta",
+    3899927000000318361: "Namrata Srivastava",
+    3899927000000201013: "Anslem Prathap",
+    3899927000005965002: "Subhasini T S"
+}

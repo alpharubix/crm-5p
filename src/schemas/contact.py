@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_serializer, field_validator
 
-from src.schemas.user import UserResponse
+from src.controllers.notes import IST
+from src.schemas.user import UserResponseAccount
+
 
 
 class ContactBase(BaseModel):
@@ -77,13 +79,20 @@ class ContactResponse(BaseModel):
     pincode: Optional[str] = None
 
     # Relationships
-    created_by: UserResponse
-    modified_by: UserResponse | None #because for new contacts modifieb_by_id is none
-    contact_owner: UserResponse
+    created_by: UserResponseAccount | None
+    modified_by: UserResponseAccount | None #because for new contacts modifieb_by_id is none
+    contact_owner: UserResponseAccount | None
     parent_account: Any  # Can be a dict or a model
 
     # Flexible Fields
     custom_fields: Dict[str, Any] = {}
+
+    @field_serializer("created_time", "modified_time")
+    def serialize_datetime(self, value):
+        if value:
+            dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return value
 
     @field_validator("id", mode="before")
     @classmethod

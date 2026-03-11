@@ -1,16 +1,18 @@
-from datetime import datetime
-
+import re
 from fastapi.exceptions import HTTPException
 from pymongo.synchronous.collection import Collection
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 
+from src.models.user import User
 from ..models.account import Account
 from .audit_log import log_action
-from datetime import datetime, timezone
+from datetime import timezone
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
+from src.controllers import auth,mail
+from concurrent.futures import ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=5)
 IST = ZoneInfo("Asia/Kolkata")
 
 def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Session):
@@ -59,6 +61,15 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             int(parent_id),
             {"note": note, "parent_id": parent_id},
         )
+        #create a background worker to send mention emails in a separate eventloop
+        executor.submit(
+            mentions,
+            note,
+            module_name,
+            parent_id,
+            user_coll,
+            pg_db
+        )
 
         return JSONResponse(
             status_code=201, content={"message": "Note saved successfully"}
@@ -68,12 +79,10 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-def get_notes(acc_ids: list, notes_collection: Collection):
-    acc_ids = [str(x) for x in acc_ids]
-
+def get_notes(id_list: list, notes_collection: Collection):
     try:
         notes_cursor = notes_collection.find(
-            {"Parent_Id.id": {"$in": acc_ids}},
+            {"Parent_Id.id": {"$in":id_list}},
             {
                 "_id": 0,
                 "Owner": 1,
@@ -87,10 +96,8 @@ def get_notes(acc_ids: list, notes_collection: Collection):
             },
         )
 
-        notes_map = {}
-
+        notes = []
         for note in notes_cursor:
-
             if note.get("Created_Time"):
                 created = datetime.fromisoformat(note["Created_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
                 note["Created_Time"] = created.strftime("%d %b %Y, %I:%M %p")
@@ -98,15 +105,9 @@ def get_notes(acc_ids: list, notes_collection: Collection):
             if note.get("Modified_Time"):
                 modified = datetime.fromisoformat(note["Modified_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
                 note["Modified_Time"] = modified.strftime("%d %b %Y, %I:%M %p")
-
-            p_id = note.get("Parent_Id").get("id")
-
-            if p_id not in notes_map:
-                notes_map[p_id] = []
-
-            notes_map[p_id].append(note)
-
-        return notes_map
+            note["Note_Content"] = map_user_name_with_id(note["Note_Content"])
+            notes.append(note)
+        return notes
 
     except Exception as e:
         print(e)
@@ -114,3 +115,54 @@ def get_notes(acc_ids: list, notes_collection: Collection):
             status_code=500,
             detail={"message": "Internal server error"},
         )
+
+def map_user_name_with_id(note_text:str)->str:
+    pattern = r"zsu\[@user:(\d+)\]zsu|crm\[user#(\d+)#(\d+)\]crm|crm\[user#(\d+)\]crm"
+    def replace(match):
+        if match.group(1):  # zsu[@user:ID]zsu
+            user_id = match.group(1)
+        elif match.group(2):  # crm[user#ID#ID]crm
+            user_id = match.group(2)
+        elif match.group(4):  # crm[user#ID]crm
+            user_id = match.group(4)
+        else:
+            return match.group(0)  # no user_id found, return original
+
+        if not user_id:
+            return match.group(0)
+
+        user_id = int(user_id)
+
+        return "@" + auth.users.get(user_id, str(user_id))
+    return re.sub(pattern, replace, note_text)
+
+
+
+def is_note_has_comment(note_text: str) -> bool:
+    pattern = re.compile(r"crm\[user#(\d+)\]crm")
+    return bool(pattern.search(note_text))
+
+
+def mentions(note,module_name,parent_id,user_coll,db:Session):
+    try:#check if the note_content have mentions in them
+        is_note_there = is_note_has_comment(note)
+        if is_note_there: #mention is there in the comment
+            pattern = re.compile(r"crm\[user#(\d+)\]crm")
+            user_ids = pattern.findall(note)
+            users=db.query(User.id,User.full_name,User.email).filter(User.id.in_(user_ids))
+            email_list = []  # holds the list of emails_id of user with the msg
+            for user in users:
+                email_list.append({
+                    "user_name": user.full_name,
+                    "user_email_address": user.email,
+                    "module": module_name,
+                    "entity_id": parent_id,
+                    "note": map_user_name_with_id(note)
+                })
+            #after collection all the emails of the user time to prepare the body and send the email
+            mail.process_mention_emails(email_list)
+            print("All emails sent successfully")
+            return None
+    except Exception as e:
+        print(e)
+        return None
