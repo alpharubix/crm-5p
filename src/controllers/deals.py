@@ -95,6 +95,10 @@ def create_deal(deal:DealCreationBody,db:Session,user_id,user_role):
         db.add(created_deal)
         db.commit()
         db.refresh(created_deal)
+
+        log_action(
+            db, user_id, user_role, "CREATED", "DEAL", created_deal.id, deal.model_dump()
+        )
         return created_deal
 
     except Exception as e:
