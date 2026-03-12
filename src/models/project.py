@@ -64,7 +64,7 @@ class Task(Base):
     priority    = Column(Enum(PriorityEnum), nullable=True)
     status      = Column(Enum(TaskStatusEnum), nullable=False, default=TaskStatusEnum.todo)
     project_id  = Column(BigInteger, ForeignKey("projects.id"), nullable=False)
-    assignee_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    assignee_id = Column(Text, ForeignKey("users.id"), nullable=True)
     created_by  = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     modified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

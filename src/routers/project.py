@@ -126,6 +126,7 @@ def format_task(t) -> dict:
         "modified_by": str(t.modified_by) if t.modified_by else None,
         "created_at": t.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
         "modified_at": t.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if t.modified_at else None,
+        "assignee_name": t.assignee.full_name if t.assignee else None,
     }
 
 
