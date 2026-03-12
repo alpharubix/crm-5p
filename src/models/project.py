@@ -1,6 +1,8 @@
+from pydantic_core.core_schema import nullable_schema
 from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
 import enum
 from ..database import Base
@@ -11,6 +13,11 @@ class PriorityEnum(str, enum.Enum):
     medium = "medium"
     high = "high"
     critical = "critical"
+
+class ProjectTypeEnum(str, enum.Enum):
+    new = "new"
+    upgradation = "upgradation"
+    modification = "modification"
 
 
 class StatusEnum(str, enum.Enum):
@@ -47,11 +54,13 @@ class Project(Base):
     modified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     modified_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
-
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date    = Column(DateTime(timezone=True), nullable=True)
+    actioner_ids = Column(ARRAY(BigInteger), nullable=True, default =[])
     modifier = relationship("User", foreign_keys=[modified_by])
     creator = relationship("User", foreign_keys=[created_by])
     tasks = relationship("Task", back_populates="project")
-
+    project_type = Column(Enum(ProjectTypeEnum), nullable=True)
 
 
 class Task(Base):

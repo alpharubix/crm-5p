@@ -131,7 +131,6 @@ class AccountResponse(BaseModel):
     owner: UserResponse | None
     account_linked_contact: list[ContactResponse] = []
     notes: Any
-    deals :list[DealSchema]=[]
     custom_fields: Dict[str, Any]
 
     @field_validator("id", mode="before")

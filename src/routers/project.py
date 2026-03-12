@@ -19,6 +19,10 @@ def format_project(p) -> dict:
         "modified_by": str(p.modified_by) if p.modified_by else None,
         "created_at": p.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
         "modified_at": p.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if p.modified_at else None,
+        "start_date": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
+        "end_date":   p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
+        "actioner_ids" : p.actioner_ids or [],
+        "project_type": p.project_type
     }
 
 
@@ -36,6 +40,10 @@ async def create_project(request: Request, db: Session = Depends(get_db)):
         priority    = body.get("priority"),
         status      = body.get("status", "planning"),
         created_by  = request.state.user_id,
+        start_date  = body.get("start_date"),
+        end_date    = body.get("end_date"),
+        actioner_ids = body.get("actioner_ids", []),
+        project_type = body.get("project_type")
     )
     db.add(project)
     db.commit()
@@ -83,11 +91,16 @@ async def update_project(project_id: int, request: Request, db: Session = Depend
         raise HTTPException(status_code=404, detail="Project not found")
 
     body = await request.json()
-    allowed = ["name", "description", "priority", "status"]
+    allowed = ["name", "description", "priority", "status", "actioner_ids", "project_type"]
 
     for field in allowed:
         if field in body:
             setattr(project, field, body[field])
+
+    if "start_date" in body:
+        project.start_date = body["start_date"]
+    if "end_date" in body:
+        project.end_date = body["end_date"]
 
     project.modified_by = request.state.user_id
     db.commit()
