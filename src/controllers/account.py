@@ -221,7 +221,8 @@ def get_all_accounts(
             Account.industry,
             Account.state,
             Account.city,
-            Account.call_back_date_time
+            Account.call_back_date_time,
+            Account.phone
         )
                 .filter(and_(*filters))
                 .offset(offset)
