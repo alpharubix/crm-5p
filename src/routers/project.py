@@ -29,6 +29,11 @@ def format_project(p) -> dict:
 @router.post("")
 @router.post("/")
 async def create_project(request: Request, db: Session = Depends(get_db)):
+
+    # Allowed users roles - [super_admin,admin]
+    if request.state.role== "executive" :
+        raise HTTPException(status_code=401, detail="Unauthorized access")
+
     body = await request.json()
 
     if not body.get("name"):
@@ -54,11 +59,14 @@ async def create_project(request: Request, db: Session = Depends(get_db)):
 
 @router.get("")
 @router.get("/")
-def get_projects(page: int = 1, db: Session = Depends(get_db)):
+def get_projects(request: Request,page: int = 1, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
+
     limit  = 20
     offset = (page - 1) * limit
     total  = db.query(Project).count()
-
+    
     projects = (
         db.query(Project)
         .order_by(Project.created_at.desc())
@@ -74,7 +82,10 @@ def get_projects(page: int = 1, db: Session = Depends(get_db)):
 
 
 @router.get("/{project_id}")
-def get_project(project_id: int, db: Session = Depends(get_db)):
+def get_project(request:Request, project_id: int, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unathorised Access")
+
     project = db.query(Project).filter(Project.id == project_id).first()
 
     if not project:
@@ -85,6 +96,8 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{project_id}")
 async def update_project(project_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
     project = db.query(Project).filter(Project.id == project_id).first()
 
     if not project:
@@ -111,6 +124,8 @@ async def update_project(project_id: int, request: Request, db: Session = Depend
 
 @router.delete("/{project_id}")
 def delete_project(project_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401,detail="Unauthorised access")
     project = db.query(Project).filter(Project.id == project_id).first()
 
     if not project:
@@ -145,6 +160,9 @@ def format_task(t) -> dict:
 
 @router.post("/{project_id}/tasks")
 async def create_task(project_id: int, request: Request, db: Session = Depends(get_db)):
+ 
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -209,6 +227,9 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
 
 @router.delete("/{project_id}/tasks/{task_id}")
 def delete_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.status.role=="executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
+    
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
