@@ -9,7 +9,20 @@ from src.controllers.audit_log import log_action
 from src.models.deal import Deal
 from src.controllers.auth import MANAGERID
 
-def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | None = None):
+def get_deals(
+    page,
+    db: Session,
+    user_id: int,
+    user_role: str,
+    deal_id: int | None = None,
+    account_name: str | None = None,
+    lender_name: str | None = None,
+    case_status: str | None = None,
+    ticket_login: str | None = None,
+    loan_type: str | None = None,
+    type_of_case_login: str | None = None,
+    deal_owner_id: int | None = None,
+):
     try:
         limit = 30
         offset = (page - 1) * limit
@@ -28,6 +41,27 @@ def get_deals(page, db: Session, user_id: int, user_role: str, deal_id: int | No
             filters.append(Deal.deal_owner_id.in_(allowed_owner_ids))
         if deal_id:
             filters.append(Deal.id == deal_id)
+
+        if account_name:
+            filters.append(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+
+        if lender_name:
+            filters.append(Deal.lender_name.ilike(f"%{lender_name.strip()}%"))
+
+        if case_status:
+            filters.append(Deal.case_status.ilike(f"{case_status.strip()}%"))
+
+        if ticket_login:
+            filters.append(Deal.ticket_login.ilike(f"{ticket_login.strip()}%"))
+
+        if loan_type:
+            filters.append(Deal.loan_type == loan_type)
+
+        if type_of_case_login:
+            filters.append(Deal.type_of_case_login == type_of_case_login)
+
+        if deal_owner_id:
+            filters.append(Deal.deal_owner_id == deal_owner_id)
 
         total_records = db.query(Deal).filter(*filters).count()
         deals = db.query(Deal).filter(*filters).options(selectinload(Deal.owner)).offset(offset).limit(limit).all()
