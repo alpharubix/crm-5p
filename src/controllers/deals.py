@@ -55,10 +55,10 @@ def get_deals(
             filters.append(Deal.ticket_login.ilike(f"{ticket_login.strip()}%"))
 
         if loan_type:
-            filters.append(Deal.loan_type == loan_type)
+            filters.append(Deal.loan_type.ilike(f"{loan_type.strip()}%"))
 
         if type_of_case_login:
-            filters.append(Deal.type_of_case_login == type_of_case_login)
+            filters.append(Deal.type_of_case_login.like(f"{type_of_case_login.strip()}%"))
 
         if deal_owner_id:
             filters.append(Deal.deal_owner_id == deal_owner_id)
