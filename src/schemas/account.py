@@ -41,7 +41,6 @@ AccountStageType = Literal[
 
 
 class AccountBase(BaseModel):
-    id: str
     # Identity & Contact (Required)
     first_name: str
     last_name: str
@@ -71,7 +70,6 @@ class AccountBase(BaseModel):
 
     # Custom Fields (JSONB)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_by_id: str
     created_time: str | datetime
     modified_time: str | datetime
 
@@ -91,19 +89,6 @@ class AccountBase(BaseModel):
             return dt
         raise ValueError("modified_time must be in string format")
 
-    @field_validator("created_by_id", mode="after")
-    @classmethod
-    def parse_created_by(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
-
-    @field_validator("id", mode="after")
-    @classmethod
-    def parse_id(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
 
 
 from pydantic import BaseModel

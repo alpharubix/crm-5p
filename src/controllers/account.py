@@ -28,7 +28,6 @@ def create_account(
         raise HTTPException(status_code=400, detail="Email exists")
 
     new_account = Account(
-        id=data.id,
         first_name=data.first_name,
         last_name=data.last_name,
         email=data.email,
