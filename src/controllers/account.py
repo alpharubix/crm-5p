@@ -28,7 +28,6 @@ def create_account(
         raise HTTPException(status_code=400, detail="Email exists")
 
     new_account = Account(
-        id=data.id,
         first_name=data.first_name,
         last_name=data.last_name,
         email=data.email,
@@ -221,7 +220,8 @@ def get_all_accounts(
             Account.industry,
             Account.state,
             Account.city,
-            Account.call_back_date_time
+            Account.call_back_date_time,
+            Account.phone
         )
                 .filter(and_(*filters))
                 .offset(offset)

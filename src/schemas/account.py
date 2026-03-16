@@ -41,7 +41,6 @@ AccountStageType = Literal[
 
 
 class AccountBase(BaseModel):
-    id: str
     # Identity & Contact (Required)
     first_name: str
     last_name: str
@@ -71,7 +70,6 @@ class AccountBase(BaseModel):
 
     # Custom Fields (JSONB)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_by_id: str
     created_time: str | datetime
     modified_time: str | datetime
 
@@ -91,19 +89,6 @@ class AccountBase(BaseModel):
             return dt
         raise ValueError("modified_time must be in string format")
 
-    @field_validator("created_by_id", mode="after")
-    @classmethod
-    def parse_created_by(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
-
-    @field_validator("id", mode="after")
-    @classmethod
-    def parse_id(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
 
 
 from pydantic import BaseModel
@@ -113,7 +98,7 @@ from datetime import datetime
 
 class AccountResponse(BaseModel):
 
-    id: Optional[str] = None
+    id: Optional[int] = None
     first_name: Optional[Any] = None
     last_name: Optional[Any] = None
     account_name: Optional[str] = None
@@ -131,15 +116,16 @@ class AccountResponse(BaseModel):
     source: Optional[str] = None
     account_stage: Optional[Any] = None
 
-    created_by_id: Optional[str] = None
+    created_by_id: Optional[int] = None
     created_time: Optional[datetime] = None
     modified_time: Optional[datetime] = None
-
+    assignment_date: Optional[datetime|None] = None
+    custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
     created_by: Optional[UserResponseAccount] = None
+    account_owner_id : Optional[int] = None
     owner:  Optional[UserResponseAccount] = None
     account_linked_contact: Optional[List["ContactResponse"]] = None
     deals: Optional[List["DealSchema"]] = None
-
     notes: Optional[Any] = None
     custom_fields: Optional[Dict[str, Any]] = None
 
@@ -147,7 +133,7 @@ class AccountResponse(BaseModel):
         "from_attributes": True
     }
 
-    @field_serializer("created_time", "modified_time","call_back_date_time")
+    @field_serializer("created_time", "modified_time","call_back_date_time","assignment_date")
     def serialize_datetime(self, value):
         if value:
             dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
@@ -155,9 +141,8 @@ class AccountResponse(BaseModel):
         else:
             return value
 
-    @field_validator("id", "created_by_id", mode="before")
-    @classmethod
-    def coerce_ids_to_str(cls, value):
+    @field_serializer("id", "account_owner_id","created_by_id")
+    def coerce_ids_to_str(self, value):
         return str(value) if value is not None else None
 
 class GetlistAccountResponse(BaseModel):
