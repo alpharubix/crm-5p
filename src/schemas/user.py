@@ -9,29 +9,29 @@ class ExistingUser(BaseModel):
     id: str
     full_name: str
     email: str
-    created_time: str
-    modified_time: str
+    # created_time: str
+    # modified_time: str
     zuid: str
     role: str
-    profile: str
+    # profile: str
     created_by_id: str | int = None
     modified_by_id: str | int = None
 
-    @field_validator("created_time", mode="after")
-    @classmethod
-    def parse_created_time(cls, value):
-        if isinstance(value, str):
-            date = datetime.fromisoformat(value)
-            return datetime.fromisoformat(value)
-        raise ValueError("created_time must be in string format")
+    # @field_validator("created_time", mode="after")
+    # @classmethod
+    # def parse_created_time(cls, value):
+    #     if isinstance(value, str):
+    #         date = datetime.fromisoformat(value)
+    #         return datetime.fromisoformat(value)
+    #     raise ValueError("created_time must be in string format")
 
-    @field_validator("modified_time", mode="after")
-    @classmethod
-    def parse_modified_time(cls, value):
-        if isinstance(value, str):
-            dt = datetime.fromisoformat(value)
-            return dt
-        raise ValueError("modified_time must be in string format")
+    # @field_validator("modified_time", mode="after")
+    # @classmethod
+    # def parse_modified_time(cls, value):
+    #     if isinstance(value, str):
+    #         dt = datetime.fromisoformat(value)
+    #         return dt
+    #     raise ValueError("modified_time must be in string format")
 
     @field_validator("modified_by_id", mode="after")
     @classmethod

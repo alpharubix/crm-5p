@@ -21,7 +21,7 @@ def format_project(p) -> dict:
         "modified_at": p.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if p.modified_at else None,
         "start_date": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
         "end_date":   p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
-        "actioner_ids" : p.actioner_ids or [],
+        "actioner_ids": [str(i) for i in (p.actioner_ids or [])],
         "project_type": p.project_type
     }
 
@@ -43,7 +43,7 @@ async def create_project(request: Request, db: Session = Depends(get_db)):
         name        = body["name"],
         description = body.get("description"),
         priority    = body.get("priority"),
-        status      = body.get("status", "planning"),
+        status = body.get("status", "pending_for_approve"),
         created_by  = request.state.user_id,
         start_date  = body.get("start_date"),
         end_date    = body.get("end_date"),

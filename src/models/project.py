@@ -26,6 +26,8 @@ class StatusEnum(str, enum.Enum):
     on_hold = "on_hold"
     completed = "completed"
     cancelled = "cancelled"
+    pending_for_approve = "pending_for_approve"
+    pending_for_review  = "pending_for_review"
 
 
 class TaskStatusEnum(str, enum.Enum):
