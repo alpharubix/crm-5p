@@ -47,6 +47,7 @@ class Account(Base):
         onupdate=func.now(),
         nullable=False
     )
+    assignment_date = Column(DateTime(timezone=False), nullable=True)
     # Self-referencing Foreign Keys
     created_by_id = Column(BIGINT, ForeignKey("users.id"), nullable=True)
     created_by = relationship(

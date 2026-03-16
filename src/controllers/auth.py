@@ -6,7 +6,6 @@ from src.models.user import User
 from src.schemas.authentication import Login
 from src.utility.utils import get_jwt_token, is_password_correct
 
-
 def validate_login(body: Login, db: Session):
     email = body.email
     password = body.password
@@ -35,6 +34,7 @@ def validate_login(body: Login, db: Session):
                     httponly=True,
                     secure=True,
                     samesite="none",
+                    max_age= 1800
                 )
                 return response
     except HTTPException as error:
