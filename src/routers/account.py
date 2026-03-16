@@ -6,12 +6,12 @@ from fastapi.params import Body
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from starlette.requests import Request
-
+from ..controllers.account import update_account as update_account_controller
 from ..controllers import account as repo
 from ..controllers.audit_log import log_action
 from ..database import get_db, get_mongodb
 from ..models.account import Account
-from ..schemas.account import AccountBase, GetlistAccountResponse, ListAccountsResponse
+from ..schemas.account import AccountBase, GetlistAccountResponse, ListAccountsResponse, AccountStatusHistoryResponse
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -72,50 +72,18 @@ async def update_account(
 ):
     user_id = int(request.state.user_id)
     user_role = request.state.role
+    updated = update_account_controller(db, account_id, payload, user_id, user_role)
+    return {"message": "update-success", "updated_account": updated}
 
-    db_account = db.query(Account).filter(Account.id == account_id).first()
-    if not db_account:
-        raise HTTPException(status_code=404, detail={"msg": "Account not found"})
 
-    custom_fields_dict = dict(db_account.custom_fields or {})
-    for key, value in payload.items():
-        if hasattr(db_account, key):
-            if value == "" or value is None:
-                setattr(db_account, key, None)
-            elif "time" in key or "date" in key:
-                if isinstance(value, str):
-                    try:
-                        value = datetime.fromisoformat(value)
-                        if value < datetime.now(timezone.utc):
-                            raise HTTPException(
-                                status_code=400,
-                                detail={"message": "Date should not be in the past"},
-                            )
-                    except Exception as e:
-                        raise e
-                    setattr(db_account, key, value)
-            else:
-                setattr(db_account, key, value)
-        else:
-            if value == "" or value is None:
-                custom_fields_dict[key] = None
-            else:
-                custom_fields_dict[key] = value
-
-    db_account.custom_fields = custom_fields_dict
-    flag_modified(db_account, "custom_fields")
-    db_account.modified_by_id = user_id
-
-    try:
-        db.commit()
-        db.refresh(db_account)
-        log_action(db, user_id, user_role, "UPDATED", "Account", account_id, payload)
-        return {"message": "update-success", "updated_account": db_account}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+#account status trackin route
+@router.get("/status-history/{account_id}", response_model=list[AccountStatusHistoryResponse])
+def get_status_history(
+    account_id: int,
+    page: int = 1,
+    db: Session = Depends(get_db)
+):
+    return repo.get_account_status_history(db, account_id, page)
 
 
 @router.post("/accounts-reassignment-csv-upload")
