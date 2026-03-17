@@ -17,9 +17,9 @@ def generate_secure_password(length: int = 16, include_symbols: bool = True) -> 
     lower = string.ascii_lowercase
     upper = string.ascii_uppercase
     digits = string.digits
-    symbols = string.punctuation if include_symbols else ""
+    # symbols = string.punctuation if include_symbols else ""
 
-    all_chars = lower + upper + digits + symbols
+    all_chars = lower + upper + digits
 
     while True:
         # Generate a random password
