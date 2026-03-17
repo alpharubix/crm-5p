@@ -4,6 +4,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
 from ..database import Base
 
+
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -47,6 +48,7 @@ class Account(Base):
         onupdate=func.now(),
         nullable=False
     )
+    assignment_date = Column(DateTime(timezone=False), nullable=True)
     # Self-referencing Foreign Keys
     created_by_id = Column(BIGINT, ForeignKey("users.id"), nullable=True)
     created_by = relationship(
@@ -61,3 +63,36 @@ class Account(Base):
         backref="account_owner"
     )
     deals = relationship("Deal", back_populates="account")
+
+
+
+
+class AccountStatusHistory(Base):
+    __tablename__ = "account_status_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # which account status changed
+    account_id = Column(BIGINT, ForeignKey("accounts.id"), nullable=False, index=True)
+
+    # previous status
+    old_status = Column(String, nullable=True)
+
+    # new status
+    new_status = Column(String, nullable=False)
+
+    # user who changed the status
+    changed_by = Column(BIGINT, ForeignKey("users.id"), nullable=False)
+
+    # timestamp of change
+    changed_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    # relationships
+    account = relationship("Account", backref="status_history")
+    changed_by_user = relationship("User")
+
+

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import (
@@ -11,8 +11,8 @@ from pydantic import (
 )
 
 from src.schemas.contact import ContactResponse
-from src.schemas.user import UserResponse
-from src.schemas.deals import DealSchema
+from src.schemas.user import UserResponseAccount
+from src.schemas.deals import DealSchema, IST
 
 # Account Status Options
 AccountStatusType = Literal[
@@ -41,7 +41,6 @@ AccountStageType = Literal[
 
 
 class AccountBase(BaseModel):
-    id: str
     # Identity & Contact (Required)
     first_name: str
     last_name: str
@@ -68,82 +67,66 @@ class AccountBase(BaseModel):
     # Flags & Dates (Optional)
     waba_interested: Optional[bool] = False
     call_back_date_time: Optional[datetime] = None
+    created_time : Optional[datetime] = Field(default_factory=lambda: datetime.now(IST))
 
     # Custom Fields (JSONB)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_by_id: str
-    created_time: str | datetime
-    modified_time: str | datetime
 
-    @field_validator("created_time", mode="after")
-    @classmethod
-    def parse_created_time(cls, value):
-        if isinstance(value, str):
-            date = datetime.fromisoformat(value)
-            return datetime.fromisoformat(value)
-        raise ValueError("created_time must be in string format")
 
-    @field_validator("modified_time", mode="after")
-    @classmethod
-    def parse_modified_time(cls, value):
-        if isinstance(value, str):
-            dt = datetime.fromisoformat(value)
-            return dt
-        raise ValueError("modified_time must be in string format")
 
-    @field_validator("created_by_id", mode="after")
-    @classmethod
-    def parse_created_by(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
-
-    @field_validator("id", mode="after")
-    @classmethod
-    def parse_id(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("id must be in string format")
+from pydantic import BaseModel
+from typing import Optional, Any, Dict, List
+from datetime import datetime
 
 
 class AccountResponse(BaseModel):
-    id: str
-    first_name: Any
-    last_name: Any
-    account_name: str | None
+
+    id: Optional[int] = None
+    first_name: Optional[Any] = None
+    last_name: Optional[Any] = None
+    account_name: Optional[str] = None
     email: Optional[str] = None
-    phone: str
-    business_status: str | None
-    distributor_code: str | None
-    call_back_date_time: datetime | None
-    type_of_business: str | None
-    industry: str | None
-    account_status: Any
-    city: str | None
-    state: str | None
-    pincode: str | None
-    source: str | None
-    account_stage: Any
-    created_by_id: str
-    created_time: datetime
-    modified_time: datetime
-    created_by: UserResponse | None
-    owner: UserResponse | None
-    account_linked_contact: list[ContactResponse] = []
-    notes: Any
-    custom_fields: Dict[str, Any]
+    phone: Optional[str] = None
+    business_status: Optional[str] = None
+    distributor_code: Optional[str] = None
+    call_back_date_time: Optional[datetime] = None
+    type_of_business: Optional[str] = None
+    industry: Optional[str] = None
+    account_status: Optional[Any] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+    source: Optional[str] = None
+    account_stage: Optional[Any] = None
 
-    @field_validator("id", mode="before")
-    @classmethod
-    def ensure_str(cls, v):
-        return str(v) if v is not None else v
-    @field_validator("created_by_id",mode="before")
-    @classmethod
-    def serialize_bigint(cls, value):
-        if isinstance(value, int):
-            return str(value)
-        return value
+    created_by_id: Optional[int] = None
+    created_time: Optional[datetime] = None
+    modified_time: Optional[datetime] = None
+    assignment_date: Optional[datetime|None] = None
+    custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    created_by: Optional[UserResponseAccount] = None
+    account_owner_id : Optional[int] = None
+    owner:  Optional[UserResponseAccount] = None
+    account_linked_contact: Optional[List["ContactResponse"]] = None
+    deals: Optional[List["DealSchema"]] = None
+    notes: Optional[Any] = None
+    custom_fields: Optional[Dict[str, Any]] = None
 
+    model_config = {
+        "from_attributes": True
+    }
+
+    @field_serializer("created_time", "modified_time","call_back_date_time","assignment_date")
+    def serialize_datetime(self, value):
+        if value:
+            dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            return value
+
+    @field_serializer("id", "account_owner_id","created_by_id")
+    def coerce_ids_to_str(self, value):
+        return str(value) if value is not None else None
 
 class GetlistAccountResponse(BaseModel):
     data: List[AccountResponse] = []
@@ -174,3 +157,16 @@ class AccountItem(BaseModel):
 
 class ListAccountsResponse(BaseModel):
     data: List[AccountItem]
+
+
+class AccountStatusHistoryResponse(BaseModel):
+    id: int
+    account_id: int
+    old_status: Optional[str]        # Optional because first status has no old_status
+    new_status: str
+    changed_by: int
+    changed_at: datetime
+
+    class Config:
+        from_attributes = True       # this tells Pydantic: read from SQLAlchemy object
+                                     # without this, it only reads plain dicts

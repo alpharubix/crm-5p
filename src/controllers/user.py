@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -82,5 +83,17 @@ def get_user_filter(request: Request, db):
             raise HTTPException(status_code=403,detail={"message" :"You do not have permission to access this content","success": False})
     except HTTPException as e:
         raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"message":"internal server error"})
+
+
+def get_all_users(db:Session):
+    try:
+        users = db.query(User.id,User.full_name).all()
+        users_list = [
+            {"id": user.id, "name": user.full_name}
+            for user in users
+        ]
+        return {"data": users_list}
     except Exception as e:
         raise HTTPException(status_code=500, detail={"message":"internal server error"})

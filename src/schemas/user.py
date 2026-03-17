@@ -1,7 +1,7 @@
 from datetime import datetime
 from zipfile import BadZipfile
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, field_serializer
 from pymongo.cursor import List
 
 
@@ -57,12 +57,10 @@ class ExistingUser(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    full_name: str
-    email: str
+    name: str
 
-    @field_validator("id", mode="after")
-    @classmethod
-    def parse_id(cls, value):
+    @field_serializer("id")
+    def parse_id(self, value):
         return str(value)
 
 
@@ -75,6 +73,18 @@ class UserFilterMode(BaseModel):
     def parse_id(cls, value):
         return str(value)
 
+class UserResponseList(BaseModel):
+    data: List[UserResponse] =[]
 
 class UserFilterResponse(BaseModel):
     data: List[UserFilterMode] = []
+
+class UserResponseAccount(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+    @field_validator("id", mode="after")
+    @classmethod
+    def parse_id(cls, value):
+        return str(value)

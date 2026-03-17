@@ -2,27 +2,26 @@ import csv
 import io
 import logging
 import math
-from cmath import nan
-from ctypes.wintypes import BOOL
 from datetime import datetime
 from typing import Optional
-
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.exc import  SQLAlchemyError
+from sqlalchemy.orm import Session,selectinload, joinedload
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-
 from src.controllers.audit_log import log_action
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 from src.utility.utils import get_account_headers
 
-from ..models.account import Account
+from ..models.account import Account, AccountStatusHistory
 from ..schemas.account import AccountBase, ListAccountsResponse
+from datetime import datetime, timezone
+from typing import Any, Dict
+from sqlalchemy.orm.attributes import flag_modified
 
 
 def create_account(
@@ -32,7 +31,6 @@ def create_account(
         raise HTTPException(status_code=400, detail="Email exists")
 
     new_account = Account(
-        id=data.id,
         first_name=data.first_name,
         last_name=data.last_name,
         email=data.email,
@@ -54,17 +52,30 @@ def create_account(
         custom_fields=data.custom_fields,
         created_by_id=user_id,
         created_time=data.created_time,
-        modified_time=data.modified_time,
     )
 
     db.add(new_account)
+    db.flush()  # gets the id without committing
+    
+
+    # insertion initial status to Account_Status_hstory
+    history = AccountStatusHistory(
+        account_id=new_account.id,
+        old_status=None,
+        new_status=new_account.account_status,
+        changed_by=user_id
+    )
+    db.add(history)
     db.commit()
     db.refresh(new_account)
 
     log_action(
-        db, user_id, user_role, "CREATED", "Account", new_account.id, data.model_dump()
+        db, user_id, user_role, "CREATED", "Account", new_account.id, data.model_dump(mode="json")
     )
-    return new_account
+
+
+    db.refresh(new_account)
+    return new_account 
 
 
 def get_all_accounts(
@@ -98,6 +109,7 @@ def get_all_accounts(
     filters = []
     user_id = request.state.user_id
     role = request.state.role
+    single_id_request = False
 
     allowed_owner_ids = None
 
@@ -116,6 +128,7 @@ def get_all_accounts(
 
     if account_id is not None:
         filters.append(Account.id == account_id)
+        single_id_request = True
     if account_name:
         filters.append(Account.account_name.ilike(f"%{account_name.strip()}%"))
     if account_status:
@@ -170,62 +183,164 @@ def get_all_accounts(
                     "success": False,
                 },
             )
-    base_query = query.filter(and_(*filters)) if filters else query
-    total_data_size = base_query.count()
-    data = (
-        base_query.offset(offset)  # query performance optimization
-        .options(
-            selectinload(Account.owner),
-            selectinload(Account.created_by),
-            selectinload(Account.account_linked_contact),
-            selectinload(Account.deals)
+    if single_id_request: #differenciate between single account_id request or other request
+        base_query = query.filter(and_(*filters)) if filters else query
+        total_data_size = base_query.count()
+        data = (
+            base_query.offset(offset)  # query performance optimization
+            .options(
+                selectinload(Account.owner),
+                selectinload(Account.created_by),
+                selectinload(Account.account_linked_contact),
+                selectinload(Account.deals)
+            )
+            .limit(limit)
+            .all()
         )
-        .limit(limit)
-        .all()
-    )
-    if len(data) != 0:
-        account_ids = [acc.id for acc in data]
-        accounts_notes = get_notes(
-            acc_ids=account_ids, notes_collection=mongodb["Notes"]
+        if len(data) != 0:
+            ids_list = [] #this holds all the id's
+            acc:Account = data[0]
+            ids_list.append(str(acc.id))
+            for contact in acc.account_linked_contact: #This loop will collect all the contact id
+                ids_list.append(str(contact.id))
+            for deal in acc.deals:
+                ids_list.append(str(deal.id)) #this will fetch the new notes
+                if deal.crm_deal_id:#this will fetch the old notes which is migrated from the crm
+                    ids_list.append(str(deal.crm_deal_id))
+            print(ids_list)
+            notes = get_notes(
+                id_list=ids_list, notes_collection=mongodb["Notes"]
+            )
+            #after getting all the notes for this account append this notes as a attribute to the account object
+
+            acc.notes = notes
+
+        total_pages = math.ceil(total_data_size / limit)
+
+        return {
+            "data": data,  # Return the clean dictionaries
+            "page_info": {
+                "page": page,
+                "total_pages": total_pages,
+                "data_size": total_data_size,
+            },
+        }
+    else:
+        data = (db.query(
+            Account.id,
+            Account.account_name,
+            Account.account_owner_id,
+            Account.account_status,
+            Account.source,
+            Account.type_of_business,
+            Account.industry,
+            Account.state,
+            Account.city,
+            Account.call_back_date_time,
+            Account.phone
         )
-        for acc in data:
-            acc.notes = accounts_notes.get(str(acc.id))
-    total_pages = math.ceil(total_data_size / limit)
-
-    return {
-        "data": data,  # Return the clean dictionaries
-        "page_info": {
-            "page": page,
-            "total_pages": total_pages,
-            "data_size": total_data_size,
-        },
-    }
-
+                .filter(and_(*filters))
+                .offset(offset)
+                .limit(limit)
+                .all())
+        total_data_size = query.filter(*filters).count()
+        total_pages = math.ceil(total_data_size / limit)
+        return {
+            "data": data,  # Return the clean dictionaries
+            "page_info": {
+                "page": page,
+                "total_pages": total_pages,
+                "data_size": total_data_size,
+            }
+        }
 
 def update_account(
-    db: Session, account_id: int, data: AccountBase, user_id: int, user_role: str
-) -> Account:
-    account = db.query(Account).filter(Account.id == account_id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+    db: Session, account_id: int, payload: Dict[str, Any], user_id: int, user_role: str
+):
+    db_account = db.query(Account).filter(Account.id == account_id).first()
+    if not db_account:
+        raise HTTPException(status_code=404, detail={"msg": "Account not found"})
 
-    account_data = data.model_dump(exclude_unset=True)
-    for key, value in account_data.items():
-        setattr(account, key, value)
+    # capture old status BEFORE any changes
+    old_status = db_account.account_status
 
-    db.commit()
-    db.refresh(account)
+    custom_fields_dict = dict(db_account.custom_fields or {})
+    for key, value in payload.items():
+        if hasattr(db_account, key):
+            if value == "" or value is None:
+                setattr(db_account, key, None)
+            elif "time" in key or "date" in key:
+                if isinstance(value, str):
+                    try:
+                        value = datetime.fromisoformat(value)
+                        if value < datetime.now(timezone.utc):
+                            raise HTTPException(
+                                status_code=400,
+                                detail={"message": "Date should not be in the past"},
+                            )
+                    except Exception as e:
+                        raise e
+                    setattr(db_account, key, value)
+            else:
+                setattr(db_account, key, value)
+        else:
+            if value == "" or value is None:
+                custom_fields_dict[key] = None
+            else:
+                custom_fields_dict[key] = value
 
-    log_action(db, user_id, user_role, "UPDATED", "Account", account_id, account_data)
-    return account
+    db_account.custom_fields = custom_fields_dict
+    flag_modified(db_account, "custom_fields")
+    db_account.modified_by_id = user_id
 
+    # write history only if status actually changed
+    new_status = db_account.account_status
+    if new_status != old_status:
+        history = AccountStatusHistory(
+            account_id=account_id,
+            old_status=old_status,
+            new_status=new_status,
+            changed_by=user_id
+        )
+        db.add(history)
 
+    try:
+        db.commit()
+        db.refresh(db_account)
+        log_action(db, user_id, user_role, "UPDATED", "Account", account_id, payload)
+        return db_account
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
 def get_account_by_id(db: Session, account_id: int) -> Account:
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     return account
 
+#Account_Status_history i.e trackin of acc history by id
+def get_account_status_history(db: Session, account_id: int, page: int = 1):
+    limit = 20
+    offset = (page - 1) * limit
+
+    history = (
+        db.query(AccountStatusHistory)
+        .filter(AccountStatusHistory.account_id == account_id)
+        .options(joinedload(AccountStatusHistory.changed_by_user))
+        .order_by(AccountStatusHistory.changed_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    if not history:
+        raise HTTPException(
+            status_code=404, 
+            detail="No status history found for this account"
+        )
+    return history
 
 async def accounts_csv_update(file: UploadFile, db: Session):
     try:
