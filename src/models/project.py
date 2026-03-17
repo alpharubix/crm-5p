@@ -53,6 +53,7 @@ class Project(Base):
     priority    = Column(Enum(PriorityEnum), nullable=True)
     status      = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.planning)
     created_by  = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    approver_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     modified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     modified_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

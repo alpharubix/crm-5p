@@ -17,6 +17,7 @@ def format_project(p) -> dict:
         "status": p.status,
         "created_by": str(p.created_by),
         "modified_by": str(p.modified_by) if p.modified_by else None,
+        "approver_id": str(p.approver_id),
         "created_at": p.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
         "modified_at": p.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if p.modified_at else None,
         "start_date": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
@@ -29,51 +30,59 @@ def format_project(p) -> dict:
 @router.post("")
 @router.post("/")
 async def create_project(request: Request, db: Session = Depends(get_db)):
-
-    # Allowed users roles - [super_admin,admin]
-    if request.state.role== "executive" :
+    # 1. Authorization Check
+    if request.state.role == "executive":
         raise HTTPException(status_code=401, detail="Unauthorized access")
 
     body = await request.json()
 
+    # 2. Validation
     if not body.get("name"):
         raise HTTPException(status_code=400, detail="name is required")
+    if not body.get("approver_id"):
+        raise HTTPException(status_code=400, detail="approver_id is required")
 
+    # 3. Explicit Mapping
     project = Project(
-        name        = body["name"],
-        description = body.get("description"),
-        priority    = body.get("priority"),
-        status = body.get("status", "pending_for_approve"),
-        created_by  = request.state.user_id,
-        start_date  = body.get("start_date"),
-        end_date    = body.get("end_date"),
-        actioner_ids = body.get("actioner_ids", []),
+        name         = body["name"],
+        description  = body.get("description"),
+        priority     = body.get("priority"),
+        status       = body.get("status", "pending_for_approve"),
+        created_by   = request.state.user_id,
+        # THIS WAS MISSING:
+        approver_id  = int(body["approver_id"]), 
+        start_date   = body.get("start_date"),
+        end_date     = body.get("end_date"),
+        # Ensure array contains integers
+        actioner_ids = [int(i) for i in body.get("actioner_ids", [])],
         project_type = body.get("project_type")
     )
+
     db.add(project)
     db.commit()
     db.refresh(project)
 
     return format_project(project)
 
-
 @router.get("")
 @router.get("/")
-def get_projects(request: Request,page: int = 1, db: Session = Depends(get_db)):
-    if request.state.role=="executive":
-        raise HTTPException(status_code=401, detail="Unauthorised Access")
+def get_projects(request: Request, page: int = 1, db: Session = Depends(get_db)):
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorized Access")
 
-    limit  = 20
+    user_id = request.state.user_id
+    limit = 20
     offset = (page - 1) * limit
-    total  = db.query(Project).count()
     
-    projects = (
-        db.query(Project)
-        .order_by(Project.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
+    # Filter: Owner OR Approver OR User is in actioner_ids array
+    query = db.query(Project).filter(
+        (Project.created_by == user_id) | 
+        (Project.approver_id == user_id) | 
+        (Project.actioner_ids.any(user_id))
     )
+
+    total = query.count()
+    projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit).all()
 
     return {
         "data": [format_project(p) for p in projects],
@@ -160,13 +169,18 @@ def format_task(t) -> dict:
 
 @router.post("/{project_id}/tasks")
 async def create_task(project_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = request.state.user_id
+    project = db.query(Project).filter(Project.id == project_id).first()
  
     if request.state.role=="executive":
         raise HTTPException(status_code=401, detail="Unauthorised Access")
     project = db.query(Project).filter(Project.id == project_id).first()
+
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    if user_id != project.created_by and user_id != project.approver_id:
+            raise HTTPException(status_code=403, detail="Only project owner or approver can create tasks")
     body = await request.json()
 
     if not body.get("title"):
@@ -207,21 +221,34 @@ def get_tasks(project_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{project_id}/tasks/{task_id}")
 async def update_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = request.state.user_id
+    project = db.query(Project).filter(Project.id == project_id).first()
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     body = await request.json()
-    allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
+    
+    # LOGIC: Determine what the user is allowed to edit
+    is_privileged = (user_id == project.created_by or user_id == project.approver_id)
+    
+    if is_privileged:
+        allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
+    else:
+        # Assignee/Actioner can ONLY change status
+        allowed = ["status"]
+        # Optional: Check if body contains forbidden keys
+        if any(key in body for key in ["title", "description", "type", "priority", "assignee_id"]):
+             raise HTTPException(status_code=403, detail="Assignees can only update task status")
 
     for field in allowed:
         if field in body:
             setattr(task, field, body[field])
 
-    task.modified_by = request.state.user_id
+    task.modified_by = user_id
     db.commit()
     db.refresh(task)
-
     return format_task(task)
 
 
