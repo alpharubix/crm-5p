@@ -52,7 +52,6 @@ def create_account(
         custom_fields=data.custom_fields,
         created_by_id=user_id,
         created_time=data.created_time,
-        modified_time=data.modified_time,
     )
 
     db.add(new_account)
@@ -71,9 +70,12 @@ def create_account(
     db.refresh(new_account)
 
     log_action(
-        db, user_id, user_role, "CREATED", "Account", new_account.id, data.model_dump()
+        db, user_id, user_role, "CREATED", "Account", new_account.id, data.model_dump(mode="json")
     )
-    return new_account
+
+
+    db.refresh(new_account)
+    return new_account 
 
 
 def get_all_accounts(

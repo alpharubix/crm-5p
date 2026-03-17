@@ -67,27 +67,10 @@ class AccountBase(BaseModel):
     # Flags & Dates (Optional)
     waba_interested: Optional[bool] = False
     call_back_date_time: Optional[datetime] = None
+    created_time : Optional[datetime] = Field(default_factory=lambda: datetime.now(IST))
 
     # Custom Fields (JSONB)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_time: str | datetime
-    modified_time: str | datetime
-
-    @field_validator("created_time", mode="after")
-    @classmethod
-    def parse_created_time(cls, value):
-        if isinstance(value, str):
-            date = datetime.fromisoformat(value)
-            return datetime.fromisoformat(value)
-        raise ValueError("created_time must be in string format")
-
-    @field_validator("modified_time", mode="after")
-    @classmethod
-    def parse_modified_time(cls, value):
-        if isinstance(value, str):
-            dt = datetime.fromisoformat(value)
-            return dt
-        raise ValueError("modified_time must be in string format")
 
 
 
