@@ -28,6 +28,7 @@ class StatusEnum(str, enum.Enum):
     cancelled = "cancelled"
     pending_for_approve = "pending_for_approve"
     pending_for_review  = "pending_for_review"
+    rejected = "rejected"
 
 
 class TaskStatusEnum(str, enum.Enum):
@@ -51,7 +52,7 @@ class Project(Base):
     name        = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     priority    = Column(Enum(PriorityEnum), nullable=True)
-    status      = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.planning)
+    status      = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.pending_for_approve)
     created_by  = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     approver_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     modified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)

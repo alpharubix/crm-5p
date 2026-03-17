@@ -225,22 +225,21 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
     project = db.query(Project).filter(Project.id == project_id).first()
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
 
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     body = await request.json()
-    
-    # LOGIC: Determine what the user is allowed to edit
+
     is_privileged = (user_id == project.created_by or user_id == project.approver_id)
-    
+
     if is_privileged:
         allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
     else:
-        # Assignee/Actioner can ONLY change status
         allowed = ["status"]
-        # Optional: Check if body contains forbidden keys
         if any(key in body for key in ["title", "description", "type", "priority", "assignee_id"]):
-             raise HTTPException(status_code=403, detail="Assignees can only update task status")
+            raise HTTPException(status_code=403, detail="Assignees can only update task status")
 
     for field in allowed:
         if field in body:
@@ -249,12 +248,20 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
     task.modified_by = user_id
     db.commit()
     db.refresh(task)
-    return format_task(task)
 
+    # ── Auto-move project to pending_for_review if all tasks are done ──
+    if body.get("status") == "done":
+        all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
+        if len(all_tasks) > 0 and all(t.status == "done" for t in all_tasks):
+            project.status = "pending_for_review"
+            project.modified_by = user_id
+            db.commit()
+
+    return format_task(task)
 
 @router.delete("/{project_id}/tasks/{task_id}")
 def delete_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
-    if request.status.role=="executive":
+    if request.state.role == "executive":
         raise HTTPException(status_code=401, detail="Unauthorised Access")
     
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
