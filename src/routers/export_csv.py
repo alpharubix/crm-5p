@@ -1,0 +1,43 @@
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
+from typing import Optional
+from ..database import get_db
+from ..controllers import export_csv as repo
+
+export_csv_router = APIRouter(prefix="/export", tags=["export"])
+
+
+@export_csv_router.get("/accounts")
+def export_accounts_csv(
+    request: Request,
+    db: Session = Depends(get_db),
+    account_name: Optional[str] = None,
+    account_status: Optional[str] = None,
+    account_stage: Optional[str] = None,
+    source: Optional[str] = None,
+    industry: Optional[str] = None,
+    city: Optional[str] = None,
+    state: Optional[str] = None,
+    phone: Optional[str] = None,
+    account_owner_id: Optional[int] = None,
+    call_back_date_time: Optional[str] = None,
+):
+    return repo.export_accounts_csv(
+        request=request,
+        db=db,
+        account_name=account_name,
+        account_status=account_status,
+        account_stage=account_stage,
+        source=source,
+        industry=industry,
+        city=city,
+        state=state,
+        phone_number=phone,
+        account_owner_id=account_owner_id,
+        call_back_date_time=call_back_date_time,
+    )
+
+
+# deals export 
+# @export_csv_router.get("/deals")
+# def export_deals_csv(...):
