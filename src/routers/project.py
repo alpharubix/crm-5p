@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 from ..database import get_db
-from ..models.project import Project, Task
+from ..models.project import Project, Task, TaskComment
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -170,8 +170,7 @@ def format_task(t) -> dict:
 @router.post("/{project_id}/tasks")
 async def create_task(project_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = request.state.user_id
-    project = db.query(Project).filter(Project.id == project_id).first()
- 
+
     if request.state.role=="executive":
         raise HTTPException(status_code=401, detail="Unauthorised Access")
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -272,3 +271,59 @@ def delete_task(project_id: int, task_id: int, request: Request, db: Session = D
     db.commit()
 
     return {"message": "Task deleted"}
+
+
+def format_comment(c) -> dict:
+    return {
+        "id": str(c.id),
+        "task_id": str(c.task_id),
+        "user_id": str(c.user_id),
+        "content": c.content,
+        "created_at": c.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
+        "user_name": c.user.full_name if c.user else None
+    }
+
+@router.post("/{project_id}/tasks/{task_id}/comments")
+async def add_task_comment(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = request.state.user_id
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+    
+    if not project or not task:
+        raise HTTPException(status_code=404, detail="Project or Task not found")
+
+    is_owner = (user_id == project.created_by)
+    is_approver = (user_id == project.approver_id)
+    is_assignee = (str(user_id) == str(task.assignee_id))
+
+    if not (is_owner or is_approver or is_assignee):
+        raise HTTPException(status_code=403, detail="Unauthorized to comment on this task")
+
+    body = await request.json()
+    if not body.get("content"):
+        raise HTTPException(status_code=400, detail="content is required")
+
+    comment = TaskComment(
+        task_id=task_id,
+        user_id=user_id,
+        content=body["content"]
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+
+    return format_comment(comment)
+
+@router.get("/{project_id}/tasks/{task_id}/comments")
+def get_task_comments(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    # Optional: Add the same ownership/assignee validation here if comments are strictly private
+
+    comments = (
+        db.query(TaskComment)
+        .filter(TaskComment.task_id == task_id)
+        .order_by(TaskComment.created_at.asc())
+        .all()
+    )
+
+    return {"data": [format_comment(c) for c in comments]}
