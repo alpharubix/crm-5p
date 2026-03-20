@@ -64,11 +64,11 @@ def process_mention_emails(email_list):
     for email in email_list:
         mail = {"email_address":email.get('user_email_address'),"body":prepare_mail_body(module_name=email.get('module'),parent_id=email.get('entity_id'),user_name=email.get('user_name'),note=email.get('note'))}
         ready_emails.append(mail)
-    send_email(ready_emails)
+    send_comments_email(ready_emails)
     return None
 
 
-def send_email(email_list):
+def send_comments_email(email_list):
         try:
             smtp = create_smtp_connection()
             for email in email_list:
@@ -91,3 +91,21 @@ def send_email(email_list):
         except Exception as e:
             print("SMTP connection failed:", e)
             return None
+
+
+
+def send_general_email(to, subject, body):
+    try:
+        smtp = create_smtp_connection()
+        msg = MIMEMultipart()
+        msg['From'] = "R1xchange CRM Mail Service <techmgr@meramerchant.com>"
+        msg['To'] = to
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        smtp.send_message(msg)
+        smtp.quit()
+        print(f"Email sent successfully to {to['email_address']}")
+    except Exception as e:
+            print(f"Error sending email to {to['email_address']}:", e)
+            return None
+

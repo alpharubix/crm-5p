@@ -1,11 +1,14 @@
 import re
+from typing import Any
+
 from fastapi.exceptions import HTTPException
 from pymongo.synchronous.collection import Collection
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
-
 from src.models.user import User
-from ..models.account import Account
+from src.models.account import Account
+from src.models.contact import Contact
+from src.models.deal import Deal
 from .audit_log import log_action
 from datetime import timezone
 from datetime import datetime
@@ -22,17 +25,24 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         Owner = user_coll.find_one(
             {"id": str(user_id)}, {"_id": 0, "id": 1, "first_name": 1, "email": 1}
         )
-        raw_parent_acc = (
-            pg_db.query(
-                Account.id.label("id"), Account.account_name.label("account_name")
-            )
-            .filter(Account.id == int(parent_id))
-            .one()
-        )
-        Parent_Id = {
-            "id": str(raw_parent_acc.id),
-            "account_name": raw_parent_acc.account_name,
-        }
+        if module_name == 'Accounts':
+            raw_parent_acc = pg_db.query(Account.id,Account.account_name).filter(Account.id == int(parent_id)).first()
+            Parent_Id = {
+                "id": str(raw_parent_acc.id),
+                "account_name": raw_parent_acc.account_name,
+            }
+        elif module_name == 'Contacts':
+            raw_parent_con = pg_db.query(Contact.id,Contact.last_name).filter(Contact.id == int(parent_id)).first()
+            Parent_Id = {
+                "id": str(raw_parent_con.id),
+                "contact_name": raw_parent_con.last_name,
+            }
+        else:
+            raw_parent_deal = pg_db.query(Deal.id,Deal.account_name).filter(Deal.id == int(parent_id)).first()
+            Parent_Id = {
+                "id": str(raw_parent_deal.id),
+                "deal_name": raw_parent_deal.account_name,
+            }
         Modified_By = None
         Created_By = user_coll.find_one(
             {"id": str(user_id)}, {"_id": 0, "id": 1, "first_name": 1, "email": 1}
@@ -79,23 +89,26 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-def get_notes(id_list: list, notes_collection: Collection):
+def get_notes(id_list:Any,notes_collection: Collection):
     try:
-        notes_cursor = notes_collection.find(
-            {"Parent_Id.id": {"$in":id_list}},
-            {
-                "_id": 0,
-                "Owner": 1,
-                "Note_Content": 1,
-                "Parent_Id": 1,
-                "Modified_By": 1,
-                "Created_By": 1,
-                "Created_Time": 1,
-                "Modified_Time": 1,
-                "module": 1,
-            },
+        filter_query = (
+            {"Parent_Id.id": {"$in": id_list}}
+            if isinstance(id_list, list)
+            else {"Parent_Id.id": id_list}
         )
 
+        projection = {
+            "_id": 0,
+            "Owner": 1,
+            "Note_Content": 1,
+            "Parent_Id": 1,
+            "Modified_By": 1,
+            "Created_By": 1,
+            "Created_Time": 1,
+            "Modified_Time": 1,
+            "module": 1,
+        }
+        notes_cursor = notes_collection.find(filter_query, projection)
         notes = []
         for note in notes_cursor:
             if note.get("Created_Time"):
