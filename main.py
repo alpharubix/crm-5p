@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi.middleware.cors import CORSMiddleware
 from src.database import Base, engine
 from src.middleware.auth import authorization
@@ -16,18 +18,24 @@ import os
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
-
+from src.controllers.Background_threads import BackgroundThreadPool
 load_dotenv(override=True)
 
 Base.metadata.clear()
 Base.metadata.reflect(bind=engine)
-app = FastAPI()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    BackgroundThreadPool.initialize_thread_pool()
+    yield
+    BackgroundThreadPool.shutdown()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def test():
     return {"message": "Hello World"}
-
 
 app.middleware("http")(authorization)
 

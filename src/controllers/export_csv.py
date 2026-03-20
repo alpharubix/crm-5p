@@ -11,8 +11,10 @@ from starlette.requests import Request
 
 from ..models.account import Account
 from src.models.deal import Deal
+from src.models.user import User
 from ..controllers.auth import MANAGERID
-
+from src.controllers.Background_threads import BackgroundThreadPool
+from src.controllers.mail import send_general_email
 
 def export_accounts_csv(
     request: Request,
@@ -58,13 +60,6 @@ def export_accounts_csv(
         account_owner_id,
         call_back_date_time,
     ])
-
-    if no_filters_applied:
-        raise HTTPException(
-            status_code=403,
-            detail="Bulk export is not available yet. Please apply at least one filter."
-        )
-
     # --- . Query filters ---
     if account_name:
         filters.append(Account.account_name.ilike(f"%{account_name.strip()}%"))
@@ -192,6 +187,46 @@ def export_accounts_csv(
             ])
             yield output.getvalue()
             output.seek(0); output.truncate(0)
+    #start a background thread for sending a mail in the background
+    BackgroundThreadPool.execute_task(
+        intimate_user_via_mail,
+        to="prathap@r1xchange.com",
+        body=f"""
+                <p>Dear Super Admin,</p>
+
+                <p>This is an automated notification to inform you that a <strong>data export</strong> has been initiated on the system. Please find the details below:</p>
+
+                <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Module</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{'Accounts'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Role</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{role}</td>
+                    </tr>
+                     <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>user_id</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{user_id}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Date & Time</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{datetime.now().strftime("%d %b %Y, %I:%M %p")}
+     }}</td>
+                    </tr>
+
+                </table>
+
+                <p>If this activity was expected and authorized, no action is required. However, if this export appears suspicious or unauthorized, please review the activity immediately and take appropriate action.</p>
+
+                <p>For audit purposes, this event has been logged in the system.</p>
+
+                <br/>
+                <p>Regards,</p>
+                <p><strong>System Notification Service</strong></p>
+                <p style="color: gray; font-size: 12px;">This is an automated message. Please do not reply to this email.</p>
+            """
+    ,        subject="[Data Export Alert] Account Data Export Initiated – Action Log Notification",)
 
     return StreamingResponse(
         generate(),
@@ -232,11 +267,6 @@ def export_deals_csv(
         account_name, lender_name, case_status,
         ticket_login, loan_type, type_of_case_login, deal_owner_id,
     ])
-    if no_filters_applied:
-        raise HTTPException(
-            status_code=403,
-            detail="Bulk export is not available yet. Please apply at least one filter."
-        )
 
     # 3. Query filters
     if account_name:
@@ -403,8 +433,57 @@ def export_deals_csv(
             yield output.getvalue()
             output.seek(0); output.truncate(0)
 
+    BackgroundThreadPool.execute_task(
+        intimate_user_via_mail,
+        to="prathap@r1xchange.com",
+        body=f"""
+            <p>Dear Super Admin,</p>
+
+            <p>This is an automated notification to inform you that a <strong>data export</strong> has been initiated on the system. Please find the details below:</p>
+
+            <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Module</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{'deals'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Role</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{role}</td>
+                </tr>
+                 <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>user_id</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{user_id}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Date & Time</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{datetime.now().strftime("%d %b %Y, %I:%M %p")}
+ }}</td>
+                </tr>
+    
+            </table>
+
+            <p>If this activity was expected and authorized, no action is required. However, if this export appears suspicious or unauthorized, please review the activity immediately and take appropriate action.</p>
+
+            <p>For audit purposes, this event has been logged in the system.</p>
+
+            <br/>
+            <p>Regards,</p>
+            <p><strong>System Notification Service</strong></p>
+            <p style="color: gray; font-size: 12px;">This is an automated message. Please do not reply to this email.</p>
+        """,
+        subject="[Data Export Alert] Deals Data Export Initiated – Action Log Notification",
+    )
     return StreamingResponse(
         generate(),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+def intimate_user_via_mail(to:str,body:str,subject:str):
+    try:
+           send_general_email(to,subject,body)
+           print("Email sent successfully")
+    except Exception as e:
+        print(e)
+
+

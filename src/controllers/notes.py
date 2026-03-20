@@ -5,6 +5,7 @@ from fastapi.exceptions import HTTPException
 from pymongo.synchronous.collection import Collection
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
+from src.database import SessionLocal
 from src.models.user import User
 from src.models.account import Account
 from src.models.contact import Contact
@@ -14,8 +15,7 @@ from datetime import timezone
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from src.controllers import auth,mail
-from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=5)
+from src.controllers.Background_threads import BackgroundThreadPool
 IST = ZoneInfo("Asia/Kolkata")
 
 def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Session):
@@ -72,13 +72,11 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             {"note": note, "parent_id": parent_id},
         )
         #create a background worker to send mention emails in a separate eventloop
-        executor.submit(
+        BackgroundThreadPool.execute_task(
             mentions,
             note,
             module_name,
             parent_id,
-            user_coll,
-            pg_db
         )
 
         return JSONResponse(
@@ -156,13 +154,19 @@ def is_note_has_comment(note_text: str) -> bool:
     return bool(pattern.search(note_text))
 
 
-def mentions(note,module_name,parent_id,user_coll,db:Session):
+def mentions(note,module_name,parent_id):
     try:#check if the note_content have mentions in them
         is_note_there = is_note_has_comment(note)
         if is_note_there: #mention is there in the comment
             pattern = re.compile(r"crm\[user#(\d+)\]crm")
             user_ids = pattern.findall(note)
-            users=db.query(User.id,User.full_name,User.email).filter(User.id.in_(user_ids))
+            with SessionLocal() as db:
+                users = db.query(
+                    User.id,
+                    User.full_name,
+                    User.email
+                ).filter(User.id.in_(user_ids)).all()
+
             email_list = []  # holds the list of emails_id of user with the msg
             for user in users:
                 email_list.append({

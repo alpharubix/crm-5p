@@ -101,10 +101,10 @@ def send_general_email(to, subject, body):
         msg['From'] = "R1xchange CRM Mail Service <techmgr@meramerchant.com>"
         msg['To'] = to
         msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
+        msg.attach(MIMEText(body, 'html'))
         smtp.send_message(msg)
         smtp.quit()
-        print(f"Email sent successfully to {to['email_address']}")
+        print(f"Email sent successfully to {to}")
     except Exception as e:
             print(f"Error sending email to {to['email_address']}:", e)
             return None

@@ -183,7 +183,7 @@ def create_deal(deal:DealCreationBody,db:Session,user_id,user_role):
         db.refresh(created_deal)
 
         log_action(
-            db, user_id, user_role, "CREATED", "DEAL", created_deal.id, deal.model_dump()
+            db, user_id, user_role, "CREATED", "DEAL", created_deal.id, deal.model_dump(mode='json')
         )
         return created_deal
 

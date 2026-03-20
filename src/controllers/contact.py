@@ -42,7 +42,7 @@ def create_contact(db: Session, data: ContactBase, user_id: int, user_role: str)
     db.refresh(new_contact)
 
     log_action(
-        db, user_id, user_role, "CREATED", "Contact", new_contact.id, data.model_dump()
+        db, user_id, user_role, "CREATED", "Contact", new_contact.id, data.model_dump(mode="json")
     )
     return new_contact
 
