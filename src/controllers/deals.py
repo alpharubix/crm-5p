@@ -9,6 +9,7 @@ from src.controllers.audit_log import log_action
 from src.models.deal import Deal
 from src.controllers.auth import MANAGERID
 
+
 def get_deals(
     page,
     db: Session,
