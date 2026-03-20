@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_serializer, Field
+from pydantic import BaseModel, field_serializer, Field, ConfigDict, field_validator
 from typing import Optional, Any, List
 from datetime import datetime, timezone, timedelta, date
 from src.schemas.user import UserResponseAccount
@@ -6,119 +6,99 @@ from decimal import Decimal
 IST = timezone(timedelta(hours=5, minutes=30))
 
 class DealSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
     # Primary Key
-    id: Optional[int] = None
-    # Relationship
-    account_id: int
+    id: str | None = None
 
-    # Deal & Ticket InfoS
-    ticket_id: Optional[int] = None
-    ticket_number: Optional[int] = None
-    deal_type: Optional[str] = None
-    loan_type: Optional[str] = None
-    type_of_login: Optional[str] = None
-    type_of_case_login: Optional[str] = None
-    ticket_login: Optional[str] = None
-    case_stage: Optional[str] = None
-    case_status: Optional[str] = None
+    # Relationship
+    account_id: str | None = None
+
+    # Deal & Ticket Info
+    ticket_id: str | None = None
+    ticket_number: str | None = None
+    deal_type: str | None = None
+    loan_type: str | None = None
+    type_of_login: str | None = None
+    type_of_case_login: str | None = None
+    ticket_login: str | None = None
+    case_stage: str | None = None
+    case_status: str | None = None
 
     # Amounts
-    disbursed_amount: Optional[Decimal] = None
-    sanction_amount: Optional[Decimal] = None
-    approved_amount: Optional[Decimal] = None
-    amount_required: Optional[Decimal] = None
-    processing_fees: Optional[Decimal] = None
-    mm_charges: Optional[Decimal] = None
-    insurance_amount: Optional[Decimal] = None
-    pf_percentage: Optional[Decimal] = None
-    rate_of_interest: Optional[Decimal] = None
-    interest_type: Optional[str] = None
+    disbursed_amount: Decimal | None = None
+    sanction_amount: Decimal | None = None
+    approved_amount: Decimal | None = None
+    amount_required: Decimal | None = None
+    processing_fees: Decimal | None = None
+    mm_charges: Decimal | None = None
+    insurance_amount: Decimal | None = None
+    pf_percentage: Decimal | None = None
+    rate_of_interest: Decimal | None = None
+    interest_type: str | None = None
 
     # Dates
-    deal_call_back_datetime: Optional[datetime] = None
-    disbursement_date: Optional[date] = None
-    lender_login_date: Optional[date] = None
-    loan_start_date: Optional[date] = None
-    loan_end_date: Optional[date] = None
-    targeted_disbursement_date: Optional[date] = None
-    tenure: Optional[int] = None
+    deal_call_back_datetime: datetime | None = None
+    disbursement_date: date | None = None
+    lender_login_date: date | None = None
+    loan_start_date: date | None = None
+    loan_end_date: date | None = None
+    targeted_disbursement_date: date | None = None
+    tenure: int | None = None
 
     # Lender / Rejection
-    lender_code: Optional[str] = None
-    lender_name: Optional[str] = None
-    customer_rejection_reason: Optional[str] = None
-    customer_rejection_status_explanation: Optional[str] = None
-    lender_rejection_reason: Optional[str] = None
-    lender_rejection_status_explanation: Optional[str] = None
+    lender_code: str | None = None
+    lender_name: str | None = None
+    customer_rejection_reason: str | None = None
+    customer_rejection_status_explanation: str | None = None
+    lender_rejection_reason: str | None = None
+    lender_rejection_status_explanation: str | None = None
 
     # Attachments
-    payment_receipt: Optional[Any] = None
-    sanction_letter: Optional[str] = None
-    potential: Optional[str] = None
-    product: Optional[str] = None
+    payment_receipt: Any | None = None
+    sanction_letter: str | None = None
+    potential: str | None = None
+    product: str | None = None
 
     # Audit
-    assignee_id: Optional[int] = None
-    created_by: Optional[int] = None
-    modified_by: Optional[int] = None
+    assignee_id: str | None = None
+    created_by: str | None = None
+    modified_by: str | None = None
 
     # Account
-    account_name: str
+    account_name: str | None = None
 
     # Timestamps
-    created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(IST))
-    updated_at: Optional[datetime] = None
-    deal_owner_id: Optional[int] = None
-    crm_deal_id: Optional[int] = None
-    owner:UserResponseAccount
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    # Owner
+    deal_owner_id: str | None = None
+    crm_deal_id: str | None = None
+    owner: UserResponseAccount | None = None  # optional now — safe for both paths
+    notes: Any | None = None
 
-    @field_serializer("deal_call_back_datetime","created_at","updated_at")
+    @field_serializer("deal_call_back_datetime", "created_at", "updated_at")
     def serialize_datetime(self, value):
-            if value:
-                dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
-                return dt.strftime("%Y-%m-%d %H:%M:%S")
-            return None
-    # ---- ID Serializers ----
-    @field_serializer(
-        "id",
-        "account_id",
-        "ticket_id",
-        "ticket_number",
-        "assignee_id",
-        "created_by",
-        "modified_by",
-        "deal_owner_id",
-        "crm_deal_id",
+        if value:
+            dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return None
+    @field_validator(
+        "id", "account_id", "ticket_id", "ticket_number",
+        "assignee_id", "created_by", "modified_by",
+        "deal_owner_id", "crm_deal_id",
+        mode="before"
     )
-    def serialize_ids(self, value):
+    @classmethod
+    def coerce_ids_to_str(cls, value):
         return str(value) if value is not None else None
 
 
-@field_serializer("deal_call_back_datetime")
-def serialize_datetime(self, value) -> Optional[str]:
-    if value is None:
-        return None
-
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=IST)
-        return value.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S")
-
-    if isinstance(value, str):
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=IST)
-        return parsed.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S")
-    return None
 
 
-class GetListDealResponse(BaseModel):
-    data: List[DealSchema] = []
+class DealListResponse(BaseModel):
+    data: list[DealSchema] = []
     page_info: dict[str, Any]
 
 class DealCreationBody(BaseModel):

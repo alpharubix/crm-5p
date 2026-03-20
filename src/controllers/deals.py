@@ -2,8 +2,11 @@ import math
 from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy import and_
+from sqlalchemy.cyextension.collections import Collection
 from sqlalchemy.orm import Session,selectinload
 
+from src.controllers.notes import get_notes
 from src.schemas.deals import DealCreationBody, IST
 from src.controllers.audit_log import log_action
 from src.models.deal import Deal
@@ -13,6 +16,7 @@ from src.controllers.auth import MANAGERID
 def get_deals(
     page,
     db: Session,
+    mongodb_conn,
     user_id: int,
     user_role: str,
     deal_id: int | None = None,
@@ -24,64 +28,109 @@ def get_deals(
     type_of_case_login: str | None = None,
     deal_owner_id: int | None = None,
 ):
-    try:
-        limit = 30
-        offset = (page - 1) * limit
-        MANAGER_EXECUTIVES_MAP = MANAGERID.MANAGER_EXECUTIVES_MAP  # class-level access
-        allowed_owner_ids = None  # not [None]
-        filters = []
+    MANAGER_EXECUTIVES_MAP = MANAGERID.MANAGER_EXECUTIVES_MAP
+    page = page or 1
+    limit = 30
+    offset = (page - 1) * limit
+    filters = []
+    single_id_request = False
+    allowed_owner_ids = None
 
-        if user_role in ("super_admin", "admin"):
-            pass
-        elif user_role == "manager":
-            allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
-        elif user_role == "executive":
-            allowed_owner_ids = [user_id]
+    if user_role in ("super_admin", "admin"):
+        pass
+    elif user_role == "manager":
+        allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
+    elif user_role == "executive":
+        allowed_owner_ids = [user_id]
 
-        if allowed_owner_ids is not None:
-            filters.append(Deal.deal_owner_id.in_(allowed_owner_ids))
-        if deal_id:
-            filters.append(Deal.id == deal_id)
+    if allowed_owner_ids is not None:
+        filters.append(Deal.deal_owner_id.in_(allowed_owner_ids))
 
-        if account_name:
-            filters.append(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+    if deal_id:
+        filters.append(Deal.id == deal_id)
+        single_id_request = True
 
-        if lender_name:
-            filters.append(Deal.lender_name.ilike(f"%{lender_name.strip()}%"))
+    if account_name:
+        filters.append(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+    if lender_name:
+        filters.append(Deal.lender_name.ilike(f"%{lender_name.strip()}%"))
+    if case_status:
+        filters.append(Deal.case_status.ilike(f"{case_status.strip()}%"))
+    if ticket_login:
+        filters.append(Deal.ticket_login.ilike(f"{ticket_login.strip()}%"))
+    if loan_type:
+        filters.append(Deal.loan_type.ilike(f"{loan_type.strip()}%"))
+    if type_of_case_login:
+        filters.append(Deal.type_of_case_login.ilike(f"{type_of_case_login.strip()}%"))
+    if deal_owner_id:
+        filters.append(Deal.deal_owner_id == deal_owner_id)
 
-        if case_status:
-            filters.append(Deal.case_status.ilike(f"{case_status.strip()}%"))
+    if single_id_request:
+        base_query = db.query(Deal).filter(and_(*filters))
+        total_records = base_query.count()
 
-        if ticket_login:
-            filters.append(Deal.ticket_login.ilike(f"{ticket_login.strip()}%"))
+        deals = (
+            base_query
+            .options(selectinload(Deal.owner))
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
 
-        if loan_type:
-            filters.append(Deal.loan_type.ilike(f"{loan_type.strip()}%"))
+        if deals:
+            deal: Deal = deals[0]
+            deal.payment_receipt = None  # sanitize sensitive field
 
-        if type_of_case_login:
-            filters.append(Deal.type_of_case_login.like(f"{type_of_case_login.strip()}%"))
+            ids_list = [str(deal.id)]
+            if deal.crm_deal_id:
+                ids_list.append(str(deal.crm_deal_id))
 
-        if deal_owner_id:
-            filters.append(Deal.deal_owner_id == deal_owner_id)
+            deal.notes = get_notes(
+                id_list=ids_list,
+                notes_collection=mongodb_conn["Notes"],
+            )
 
-        total_records = db.query(Deal).filter(*filters).count()
-        deals = db.query(Deal).filter(*filters).options(selectinload(Deal.owner)).offset(offset).limit(limit).all()
-        for deal in deals:
-            deal.payment_receipt = None
         total_pages = math.ceil(total_records / limit)
 
         return {
             "data": deals,
             "page_info": {
-                "total_pages": total_pages,
                 "page": page,
+                "total_pages": total_pages,
                 "data_size": total_records,
             },
         }
-    except Exception as e:
-        print(e)
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error"})
 
+    else:
+        base_query = db.query(Deal).filter(and_(*filters))
+        total_records = base_query.count()
+
+        deals = (
+            base_query
+            .with_entities(
+                Deal.id,
+                Deal.account_name,
+                Deal.lender_name,
+                Deal.case_status,
+                Deal.loan_type,
+                Deal.ticket_login,
+                Deal.deal_owner_id,
+            )
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        total_pages = math.ceil(total_records / limit)
+
+        return {
+            "data": deals,
+            "page_info": {
+                "page": page,
+                "total_pages": total_pages,
+                "data_size": total_records,
+            },
+        }
 def create_deal(deal:DealCreationBody,db:Session,user_id,user_role):
     try:
         created_deal  = Deal(

@@ -2,18 +2,19 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
 from starlette.requests import Request
-from src.schemas.deals import GetListDealResponse,DealCreationBody
+from src.schemas.deals import DealListResponse,DealCreationBody
 from src.controllers.deals import get_deals,create_deal,update_deal_based_on_id
-from src.database import get_db
+from src.database import get_db,get_mongodb
 
 deals_router = APIRouter(prefix="/deals", tags=["deals"])
 
 
-@deals_router.get("",response_model=GetListDealResponse)
-@deals_router.get("/",response_model=GetListDealResponse)
+@deals_router.get("",response_model=DealListResponse,response_model_exclude_none=True)
+@deals_router.get("/",response_model=DealListResponse,response_model_exclude_none=True)
 def get_deals_list(
     request: Request,
     db: Session = Depends(get_db),
+    mongodb_conn = Depends(get_mongodb),
     page: int = 1,
     deal_id: int | None = None,
     account_name: str | None = None,
@@ -27,6 +28,7 @@ def get_deals_list(
     return get_deals(
         page,
         db,
+        mongodb_conn,
         int(request.state.user_id),
         request.state.role,
         deal_id,
