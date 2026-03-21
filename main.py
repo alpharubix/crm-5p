@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi.middleware.cors import CORSMiddleware
 from src.database import Base, engine
 from src.middleware.auth import authorization
@@ -12,12 +14,13 @@ from src.routers import project as project_router
 from src.routers.authentication import authentication_router
 from src.routers.notes import notes_router
 from src.routers.deals import deals_router
+from src.routers.export_csv import export_csv_router
 import os
 
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
-
+from src.controllers.Background_threads import BackgroundThreadPool
 load_dotenv(override=True)
 
 '''
@@ -33,10 +36,17 @@ Do not reflect or create tables on application startup. Use alembic (which is al
 app = FastAPI()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    BackgroundThreadPool.initialize_thread_pool()
+    yield
+    BackgroundThreadPool.shutdown()
+
+app = FastAPI(lifespan=lifespan)
+
 @app.get("/")
 def test():
     return {"message": "Hello World"}
-
 
 app.middleware("http")(authorization)
 
@@ -59,6 +69,7 @@ app.include_router(authentication_router)
 app.include_router(notes_router)
 app.include_router(audit_log_router.router)
 app.include_router(deals_router)
+app.include_router(export_csv_router)
 app.include_router(project_router.router)
 
 if __name__ == "__main__":
