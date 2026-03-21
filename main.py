@@ -5,10 +5,12 @@ from src.database import Base, engine
 from src.middleware.auth import authorization
 from src.models.audit_log import AuditLog  # so Base picks it up
 from src.models.contact import Contact
+from src.models.project import Project, Task
 from src.routers import account as account_router
 from src.routers import audit_log as audit_log_router
 from src.routers import contact as contact_router
 from src.routers import user as user_router
+from src.routers import project as project_router
 from src.routers.authentication import authentication_router
 from src.routers.notes import notes_router
 from src.routers.deals import deals_router
@@ -23,6 +25,8 @@ load_dotenv(override=True)
 
 Base.metadata.clear()
 Base.metadata.reflect(bind=engine)
+Base.metadata.create_all(bind=engine)  # ← add here
+app = FastAPI()
 
 
 @asynccontextmanager
@@ -59,6 +63,7 @@ app.include_router(notes_router)
 app.include_router(audit_log_router.router)
 app.include_router(deals_router)
 app.include_router(export_csv_router)
+app.include_router(project_router.router)
 
 if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found

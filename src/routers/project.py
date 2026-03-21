@@ -1,0 +1,329 @@
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+from zoneinfo import ZoneInfo
+from ..database import get_db
+from ..models.project import Project, Task, TaskComment
+
+IST = ZoneInfo("Asia/Kolkata")
+router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def format_project(p) -> dict:
+    return {
+        "id": str(p.id),
+        "name": p.name,
+        "description": p.description,
+        "priority": p.priority,
+        "status": p.status,
+        "created_by": str(p.created_by),
+        "modified_by": str(p.modified_by) if p.modified_by else None,
+        "approver_id": str(p.approver_id),
+        "created_at": p.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
+        "modified_at": p.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if p.modified_at else None,
+        "start_date": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
+        "end_date":   p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
+        "actioner_ids": [str(i) for i in (p.actioner_ids or [])],
+        "project_type": p.project_type
+    }
+
+
+@router.post("")
+@router.post("/")
+async def create_project(request: Request, db: Session = Depends(get_db)):
+    # 1. Authorization Check
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorized access")
+
+    body = await request.json()
+
+    # 2. Validation
+    if not body.get("name"):
+        raise HTTPException(status_code=400, detail="name is required")
+    if not body.get("approver_id"):
+        raise HTTPException(status_code=400, detail="approver_id is required")
+
+    # 3. Explicit Mapping
+    project = Project(
+        name         = body["name"],
+        description  = body.get("description"),
+        priority     = body.get("priority"),
+        status       = body.get("status", "pending_for_approve"),
+        created_by   = request.state.user_id,
+        # THIS WAS MISSING:
+        approver_id  = int(body["approver_id"]), 
+        start_date   = body.get("start_date"),
+        end_date     = body.get("end_date"),
+        # Ensure array contains integers
+        actioner_ids = [int(i) for i in body.get("actioner_ids", [])],
+        project_type = body.get("project_type")
+    )
+
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    return format_project(project)
+
+@router.get("")
+@router.get("/")
+def get_projects(request: Request, page: int = 1, db: Session = Depends(get_db)):
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorized Access")
+
+    user_id = request.state.user_id
+    limit = 20
+    offset = (page - 1) * limit
+    
+    # Filter: Owner OR Approver OR User is in actioner_ids array
+    query = db.query(Project).filter(
+        (Project.created_by == user_id) | 
+        (Project.approver_id == user_id) | 
+        (Project.actioner_ids.any(user_id))
+    )
+
+    total = query.count()
+    projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "data": [format_project(p) for p in projects],
+        "page_info": {"page": page, "total": total},
+    }
+
+
+@router.get("/{project_id}")
+def get_project(request:Request, project_id: int, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unathorised Access")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return format_project(project)
+
+
+@router.patch("/{project_id}")
+async def update_project(project_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
+    project = db.query(Project).filter(Project.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    body = await request.json()
+    allowed = ["name", "description", "priority", "status", "actioner_ids", "project_type"]
+
+    for field in allowed:
+        if field in body:
+            setattr(project, field, body[field])
+
+    if "start_date" in body:
+        project.start_date = body["start_date"]
+    if "end_date" in body:
+        project.end_date = body["end_date"]
+
+    project.modified_by = request.state.user_id
+    db.commit()
+    db.refresh(project)
+
+    return format_project(project)
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401,detail="Unauthorised access")
+    project = db.query(Project).filter(Project.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    db.delete(project)
+    db.commit()
+
+    return {"message": "Project deleted"}
+
+
+
+
+
+def format_task(t) -> dict:
+    return {
+        "id": str(t.id),
+        "title": t.title,
+        "description": t.description,
+        "type": t.type,
+        "priority": t.priority,
+        "status": t.status,
+        "project_id": str(t.project_id),
+        "assignee_id": str(t.assignee_id) if t.assignee_id else None,
+        "created_by": str(t.created_by),
+        "modified_by": str(t.modified_by) if t.modified_by else None,
+        "created_at": t.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
+        "modified_at": t.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if t.modified_at else None,
+        "assignee_name": t.assignee.full_name if t.assignee else None,
+    }
+
+
+@router.post("/{project_id}/tasks")
+async def create_task(project_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = request.state.user_id
+
+    if request.state.role=="executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
+    project = db.query(Project).filter(Project.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if user_id != project.created_by and user_id != project.approver_id:
+            raise HTTPException(status_code=403, detail="Only project owner or approver can create tasks")
+    body = await request.json()
+
+    if not body.get("title"):
+        raise HTTPException(status_code=400, detail="title is required")
+
+    task = Task(
+        title       = body["title"],
+        description = body.get("description"),
+        type        = body.get("type", "feature"),
+        priority    = body.get("priority"),
+        status      = body.get("status", "todo"),
+        project_id  = project_id,
+        assignee_id = body.get("assignee_id"),
+        created_by  = request.state.user_id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    return format_task(task)
+
+
+@router.get("/{project_id}/tasks")
+def get_tasks(project_id: int, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tasks = (
+        db.query(Task)
+        .filter(Task.project_id == project_id)
+        .order_by(Task.created_at.desc())
+        .all()
+    )
+
+    return {"data": [format_task(t) for t in tasks]}
+
+
+@router.patch("/{project_id}/tasks/{task_id}")
+async def update_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = request.state.user_id
+    project = db.query(Project).filter(Project.id == project_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    body = await request.json()
+
+    is_privileged = (user_id == project.created_by or user_id == project.approver_id)
+
+    if is_privileged:
+        allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
+    else:
+        allowed = ["status"]
+        if any(key in body for key in ["title", "description", "type", "priority", "assignee_id"]):
+            raise HTTPException(status_code=403, detail="Assignees can only update task status")
+
+    for field in allowed:
+        if field in body:
+            setattr(task, field, body[field])
+
+    task.modified_by = user_id
+    db.commit()
+    db.refresh(task)
+
+    # ── Auto-move project to pending_for_review if all tasks are done ──
+    if body.get("status") == "done":
+        all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
+        if len(all_tasks) > 0 and all(t.status == "done" for t in all_tasks):
+            project.status = "pending_for_review"
+            project.modified_by = user_id
+            db.commit()
+
+    return format_task(task)
+
+@router.delete("/{project_id}/tasks/{task_id}")
+def delete_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
+    
+    task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db.delete(task)
+    db.commit()
+
+    return {"message": "Task deleted"}
+
+
+def format_comment(c) -> dict:
+    return {
+        "id": str(c.id),
+        "task_id": str(c.task_id),
+        "user_id": str(c.user_id),
+        "content": c.content,
+        "created_at": c.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
+        "user_name": c.user.full_name if c.user else None
+    }
+
+@router.post("/{project_id}/tasks/{task_id}/comments")
+async def add_task_comment(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = request.state.user_id
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+    
+    if not project or not task:
+        raise HTTPException(status_code=404, detail="Project or Task not found")
+
+    is_owner = (user_id == project.created_by)
+    is_approver = (user_id == project.approver_id)
+    is_assignee = (str(user_id) == str(task.assignee_id))
+
+    if not (is_owner or is_approver or is_assignee):
+        raise HTTPException(status_code=403, detail="Unauthorized to comment on this task")
+
+    body = await request.json()
+    if not body.get("content"):
+        raise HTTPException(status_code=400, detail="content is required")
+
+    comment = TaskComment(
+        task_id=task_id,
+        user_id=user_id,
+        content=body["content"]
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+
+    return format_comment(comment)
+
+@router.get("/{project_id}/tasks/{task_id}/comments")
+def get_task_comments(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    # Optional: Add the same ownership/assignee validation here if comments are strictly private
+
+    comments = (
+        db.query(TaskComment)
+        .filter(TaskComment.task_id == task_id)
+        .order_by(TaskComment.created_at.asc())
+        .all()
+    )
+
+    return {"data": [format_comment(c) for c in comments]}

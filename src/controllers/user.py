@@ -18,13 +18,13 @@ def insert_already_existing_user(data: ExistingUser, db):
             )
         else:
             # define role for this user
-            role = None  # role will be none initially
-            if data.role == "CEO" and data.profile == "Administrator":
-                role = "super_admin"
-            elif data.role == "Manager" and data.profile == "Administrator":
-                role = "admin"
-            elif data.role == "Manager" and data.profile == "Standard":
-                role = "executive"
+            role = "admin"  # role will be CHANGE based on requirement
+            # if data.role == "CEO" and data.profile == "Administrator":
+            #     role = "super_admin"
+            # elif data.role == "Manager" and data.profile == "Administrator":
+            #     role = "admin"
+            # elif data.role == "Manager" and data.profile == "Standard":
+            #     role = "executive"
 
             # generate the password and store it
             password = generate_secure_password(8)
@@ -39,8 +39,8 @@ def insert_already_existing_user(data: ExistingUser, db):
                 role=role,
                 zuid=data.zuid,
                 password=hashed_password,
-                created_time=data.created_time,
-                modified_time=data.modified_time,
+                # created_time=data.created_time,
+                # modified_time=data.modified_time,
                 created_by_id=data.created_by_id,
                 modified_by_id=data.modified_by_id,
             )
