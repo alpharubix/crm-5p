@@ -2,10 +2,10 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.params import Body
+from pymongo.collation import Collation
 from sqlalchemy.orm import Session
-
 from ..controllers.contact import create_contact, get_all_contacts, update_contacts
-from ..database import get_db
+from ..database import get_db,get_mongodb
 from ..schemas.contact import ContactBase, ContactResponseList
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
@@ -19,8 +19,8 @@ def create(request: Request, data: ContactBase, db: Session = Depends(get_db)):
     return create_contact(data=data, db=db, user_id=user_id, user_role=user_role)
 
 
-@router.get("", response_model=ContactResponseList)
-@router.get("/", response_model=ContactResponseList)
+@router.get("", response_model=ContactResponseList,response_model_exclude_none=True)
+@router.get("/", response_model=ContactResponseList,response_model_exclude_none=True)
 def list_all(
     request: Request,
     contact_id: int = None,
@@ -31,9 +31,11 @@ def list_all(
     mobile: str = None,
     city: str = None,
     db: Session = Depends(get_db),
+    mongdb_conn:Collation = Depends(get_mongodb)
 ):
+    print("Routepage",page)
     return get_all_contacts(
-        request, db, page, contact_id, phone, mobile, city, email, full_name
+        request,db,mongdb_conn, page, contact_id, phone, mobile, city, email, full_name
     )
 
 

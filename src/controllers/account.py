@@ -130,6 +130,7 @@ def get_all_accounts(
         filters.append(Account.id == account_id)
         single_id_request = True
     if account_name:
+        print("account_name ",account_name)
         filters.append(Account.account_name.ilike(f"%{account_name.strip()}%"))
     if account_status:
         filters.append(Account.account_status.ilike(f"{account_status.strip()}%"))

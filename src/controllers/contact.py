@@ -2,11 +2,12 @@ import math
 from datetime import datetime
 
 from fastapi import HTTPException
+from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload, session
+from sqlalchemy.orm import Session, joinedload, session, selectinload
 from starlette.requests import Request
-
+from src.controllers.notes import get_notes
 from ..models.contact import Contact
 from ..schemas.contact import ContactBase
 from .audit_log import log_action
@@ -41,15 +42,16 @@ def create_contact(db: Session, data: ContactBase, user_id: int, user_role: str)
     db.refresh(new_contact)
 
     log_action(
-        db, user_id, user_role, "CREATED", "Contact", new_contact.id, data.model_dump()
+        db, user_id, user_role, "CREATED", "Contact", new_contact.id, data.model_dump(mode="json")
     )
     return new_contact
 
 
 def get_all_contacts(
-    request,  # Added request to access user state
+    request,
     db: Session,
-    page: int,
+    mongodb_conn,
+    page: int=1,
     contact_id: int | None = None,
     phone: str = None,
     mobile: str = None,
@@ -57,37 +59,31 @@ def get_all_contacts(
     email: str = "",
     full_name: str = "",
 ):
-    # Same Map as in get_all_accounts
-    MANAGER_EXECUTIVES_MAP = (
-        MANAGERID().MANAGER_EXECUTIVES_MAP
-    )  # manager is mapping object
-
-    limit = 20
+    MANAGER_EXECUTIVES_MAP = MANAGERID().MANAGER_EXECUTIVES_MAP
+    print(page)
+    limit = 30
     offset = (page - 1) * limit
     query = db.query(Contact)
     filters = []
 
-    # --- Role Based Logic Start ---
     user_id = request.state.user_id
     role = request.state.role
     allowed_owner_ids = None
+    single_id_request = False  # <-- track whether this is a single-contact lookup
 
     if role in ("super_admin", "admin"):
-        pass  # No restrictions
+        pass
     elif role == "manager":
         allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
     elif role == "executive":
         allowed_owner_ids = [user_id]
 
     if allowed_owner_ids is not None:
-        # Assuming the Contact model has a field 'contact_owner_id'
-        # or similar relationship to determine ownership
         filters.append(Contact.owner_id.in_(allowed_owner_ids))
-    # --- Role Based Logic End ---
 
-    # Existing filters
     if contact_id:
         filters.append(Contact.id == contact_id)
+        single_id_request = True  # <-- flag set here, same as accounts
     if city and city.strip():
         filters.append(Contact.city.ilike(f"%{city.strip()}%"))
     if email and email.strip():
@@ -108,30 +104,77 @@ def get_all_contacts(
                 Contact.mobile.startswith(f"+91{mobile}"),
             )
         )
-    base_query = query.filter(and_(*filters)) if filters else query
 
-    total_data_size = base_query.count()
-    data = (
-        base_query.offset(offset)
-        .options(
-            joinedload(Contact.parent_account),
-            joinedload(Contact.contact_owner),
-            joinedload(Contact.created_by),
-            joinedload(Contact.modified_by),
+    if single_id_request:
+        # --- Full load path: related models + notes ---
+        base_query = query.filter(and_(*filters)) if filters else query
+        total_data_size = base_query.count()
+
+        data = (
+            base_query
+            .options(
+                selectinload(Contact.parent_account),
+                selectinload(Contact.contact_owner),
+                selectinload(Contact.created_by),
+                selectinload(Contact.modified_by),
+            )
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
-        .limit(limit)
-        .all()
-    )
-    total_pages = math.ceil(total_data_size / limit)
 
-    return {
-        "data": data,
-        "page_info": {
-            "page": page,
-            "total_pages": total_pages,
-            "data_size": total_data_size,
-        },
-    }
+        if data:
+            contact: Contact = data[0]
+            # Build ids_list from the contact itself (extend here if
+            # Contact gains related deals/accounts that also carry notes)
+            ids_list = [str(contact.id)]
+
+            notes = get_notes(
+                id_list=ids_list,
+                notes_collection=mongodb_conn["Notes"],
+            )
+            contact.notes = notes  # attach to the object, not the list
+
+        total_pages = math.ceil(total_data_size / limit)
+
+        return {
+            "data": data,
+            "page_info": {
+                "page": page,
+                "total_pages": total_pages,
+                "data_size": total_data_size,
+            },
+        }
+
+    else:
+        # --- Lightweight path: column subset only, no eager loading ---
+        data = (
+            db.query(
+                Contact.id,
+                Contact.first_name,
+                Contact.last_name,
+                Contact.email,
+                Contact.mobile,
+                Contact.city,
+                Contact.owner_id,
+            )
+            .filter(and_(*filters))
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        total_data_size = query.filter(and_(*filters)).count()
+        total_pages = math.ceil(total_data_size / limit)
+
+        return {
+            "data": data,
+            "page_info": {
+                "page": page,
+                "total_pages": total_pages,
+                "data_size": total_data_size,
+            },
+        }
 
 
 def update_contacts(request: Request, contact_id: int, body: dict, db: Session):
