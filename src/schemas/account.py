@@ -134,7 +134,7 @@ class GetlistAccountResponse(BaseModel):
 
 
 class GetAssociatedAccountResponse(BaseModel):
-    id: int
+    id: str
     account_name: str | Any
     phone: str | Any = None
     email: Optional[str] = None
@@ -148,7 +148,7 @@ class GetAssociatedAccountResponse(BaseModel):
             return value
 
 class AccountItem(BaseModel):
-    id: int | str
+    id: str
     account_name: Any
 
     @field_serializer("id")
@@ -160,8 +160,8 @@ class ListAccountsResponse(BaseModel):
 
 
 class AccountStatusHistoryResponse(BaseModel):
-    id: int
-    account_id: int
+    id: str
+    account_id: str
     old_status: Optional[str]        # Optional because first status has no old_status
     new_status: str
     changed_by: int
