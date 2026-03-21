@@ -56,7 +56,7 @@ class ExistingUser(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: int
+    id: str
     name: str
 
     @field_serializer("id")
@@ -80,7 +80,7 @@ class UserFilterResponse(BaseModel):
     data: List[UserFilterMode] = []
 
 class UserResponseAccount(BaseModel):
-    id: int
+    id: str
     full_name: str
     email: str
 

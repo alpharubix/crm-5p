@@ -20,9 +20,16 @@ from fastapi import FastAPI
 
 load_dotenv(override=True)
 
-Base.metadata.clear()
-Base.metadata.reflect(bind=engine)
-Base.metadata.create_all(bind=engine)  # ← add here
+'''
+Long Server Start Cause:
+These functions runs synchronously at the module level. It queries the database over the network to fetch the schema for every existing table. This causes severe blocking I/O during initialization.
+
+Do not reflect or create tables on application startup. Use alembic (which is already in dependencies) to manage database migrations offline.
+'''
+# Base.metadata.clear()
+# Base.metadata.reflect(bind=engine)
+# Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
 
 

@@ -10,7 +10,7 @@ class DealSchema(BaseModel):
     # Primary Key
     id: Optional[int] = None
     # Relationship
-    account_id: int
+    account_id: str
 
     # Deal & Ticket InfoS
     ticket_id: Optional[int] = None
@@ -126,7 +126,7 @@ class DealCreationBody(BaseModel):
     # Primary Key
     id: Optional[int] = None
     # Relationship
-    account_id: int
+    account_id: str
 
     # Deal & Ticket InfoS
     ticket_id: Optional[int] = None
