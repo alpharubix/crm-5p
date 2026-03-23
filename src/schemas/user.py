@@ -59,9 +59,10 @@ class UserResponse(BaseModel):
     id: str
     name: str
 
-    @field_serializer("id")
-    def parse_id(self, value):
-        return str(value)
+    @field_validator("id", mode="before")
+    @classmethod
+    def cast_id_to_str(cls, value):
+        return str(value) if value is not None else None
 
 
 class UserFilterMode(BaseModel):
@@ -80,11 +81,11 @@ class UserFilterResponse(BaseModel):
     data: List[UserFilterMode] = []
 
 class UserResponseAccount(BaseModel):
-    id: str
+    id: str | None = None
     full_name: str
     email: str
 
-    @field_validator("id", mode="after")
+    @field_validator("id", mode="before")
     @classmethod
     def parse_id(cls, value):
-        return str(value)
+        return str(value) if value is not None else None

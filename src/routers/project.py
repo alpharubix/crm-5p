@@ -105,20 +105,30 @@ def get_project(request:Request, project_id: int, db: Session = Depends(get_db))
 
 @router.patch("/{project_id}")
 async def update_project(project_id: int, request: Request, db: Session = Depends(get_db)):
-    if request.state.role=="executive":
+    if request.state.role == "executive":
         raise HTTPException(status_code=401, detail="Unauthorised Access")
+        
     project = db.query(Project).filter(Project.id == project_id).first()
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     body = await request.json()
-    allowed = ["name", "description", "priority", "status", "actioner_ids", "project_type"]
-
+    
+    # 1. Standard string/enum fields
+    allowed = ["name", "description", "priority", "status", "project_type"]
     for field in allowed:
         if field in body:
             setattr(project, field, body[field])
 
+    # 2. Handle integer casting for IDs
+    if "approver_id" in body and body["approver_id"]:
+        setattr(project, "approver_id", int(body["approver_id"]))
+        
+    if "actioner_ids" in body:
+        setattr(project, "actioner_ids", [int(i) for i in body["actioner_ids"]])
+
+    # 3. Handle Dates
     if "start_date" in body:
         project.start_date = body["start_date"]
     if "end_date" in body:
@@ -171,15 +181,25 @@ def format_task(t) -> dict:
 async def create_task(project_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = request.state.user_id
 
-    if request.state.role=="executive":
+    if request.state.role == "executive":
         raise HTTPException(status_code=401, detail="Unauthorised Access")
+
     project = db.query(Project).filter(Project.id == project_id).first()
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if user_id != project.created_by and user_id != project.approver_id:
-            raise HTTPException(status_code=403, detail="Only project owner or approver can create tasks")
+    # --- CHANGED: Allow Owner, Approver, OR Assignee ---
+    is_member = (
+        user_id == project.created_by or 
+        user_id == project.approver_id or 
+        user_id in (project.actioner_ids or [])
+    )
+    
+    if not is_member:
+        raise HTTPException(status_code=403, detail="Only project members can create tasks")
+    # ---------------------------------------------------
+
     body = await request.json()
 
     if not body.get("title"):
@@ -192,7 +212,8 @@ async def create_task(project_id: int, request: Request, db: Session = Depends(g
         priority    = body.get("priority"),
         status      = body.get("status", "todo"),
         project_id  = project_id,
-        assignee_id = body.get("assignee_id"),
+        # CHANGED: Cast string ID to int
+        assignee_id = int(body["assignee_id"]) if body.get("assignee_id") else None,
         created_by  = request.state.user_id,
     )
     db.add(task)
@@ -200,7 +221,6 @@ async def create_task(project_id: int, request: Request, db: Session = Depends(g
     db.refresh(task)
 
     return format_task(task)
-
 
 @router.get("/{project_id}/tasks")
 def get_tasks(project_id: int, db: Session = Depends(get_db)):
@@ -221,39 +241,51 @@ def get_tasks(project_id: int, db: Session = Depends(get_db)):
 @router.patch("/{project_id}/tasks/{task_id}")
 async def update_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = request.state.user_id
-    project = db.query(Project).filter(Project.id == project_id).first()
-    task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+    
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorised Access")
 
+    project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     body = await request.json()
 
-    is_privileged = (user_id == project.created_by or user_id == project.approver_id)
+    # --- CHANGED: Check if user is any type of project member ---
+    is_member = (
+        user_id == project.created_by or 
+        user_id == project.approver_id or 
+        user_id in (project.actioner_ids or [])
+    )
 
-    if is_privileged:
-        allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
-    else:
-        allowed = ["status"]
-        if any(key in body for key in ["title", "description", "type", "priority", "assignee_id"]):
-            raise HTTPException(status_code=403, detail="Assignees can only update task status")
+    if not is_member:
+        raise HTTPException(status_code=403, detail="Only project members can edit tasks")
+
+    # --- CHANGED: All members get full edit access ---
+    allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
 
     for field in allowed:
         if field in body:
-            setattr(task, field, body[field])
+            # Cast assignee_id to int if it's provided
+            if field == "assignee_id" and body[field] is not None:
+                setattr(task, field, int(body[field]))
+            else:
+                setattr(task, field, body[field])
 
     task.modified_by = user_id
     db.commit()
     db.refresh(task)
 
-    # ── Auto-move project to pending_for_review if all tasks are done ──
+# ── Auto-move project to pending_for_review if all tasks are done ──
     if body.get("status") == "done":
         all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
         if len(all_tasks) > 0 and all(t.status == "done" for t in all_tasks):
-            project.status = "pending_for_review"
-            project.modified_by = user_id
+            setattr(project, "status", "pending_for_review")
+            setattr(project, "modified_by", user_id)
             db.commit()
 
     return format_task(task)
@@ -293,11 +325,13 @@ async def add_task_comment(project_id: int, task_id: int, request: Request, db: 
     if not project or not task:
         raise HTTPException(status_code=404, detail="Project or Task not found")
 
-    is_owner = (user_id == project.created_by)
-    is_approver = (user_id == project.approver_id)
-    is_assignee = (str(user_id) == str(task.assignee_id))
+    is_member = (
+        user_id == project.created_by or 
+        user_id == project.approver_id or 
+        user_id in (project.actioner_ids or [])
+    )
 
-    if not (is_owner or is_approver or is_assignee):
+    if not is_member:
         raise HTTPException(status_code=403, detail="Unauthorized to comment on this task")
 
     body = await request.json()
