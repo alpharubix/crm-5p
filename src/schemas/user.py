@@ -84,7 +84,7 @@ class UserResponseAccount(BaseModel):
     full_name: str
     email: str
 
-    @field_validator("id", mode="after")
+    @field_validator("id", mode="before")
     @classmethod
     def parse_id(cls, value):
         return str(value)
