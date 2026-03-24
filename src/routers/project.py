@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 from ..database import get_db
 from ..models.project import Project, Task, TaskComment
+from ..models.project_log import ProjectLog
+from ..controllers.project_log import log_project_action
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -61,7 +63,7 @@ async def create_project(request: Request, db: Session = Depends(get_db)):
     db.add(project)
     db.commit()
     db.refresh(project)
-
+    log_project_action(db, request.state.user_id, request.state.role, "CREATED", "PROJECT", project.id, None, changes=body)
     return format_project(project)
 
 @router.get("")
@@ -137,7 +139,7 @@ async def update_project(project_id: int, request: Request, db: Session = Depend
     project.modified_by = request.state.user_id
     db.commit()
     db.refresh(project)
-
+    log_project_action(db, request.state.user_id, request.state.role, "UPDATED", "PROJECT", project.id, None, body)
     return format_project(project)
 
 
@@ -219,7 +221,7 @@ async def create_task(project_id: int, request: Request, db: Session = Depends(g
     db.add(task)
     db.commit()
     db.refresh(task)
-
+    log_project_action(db, request.state.user_id, request.state.role, "CREATED", "TASK", project_id, task.id, changes=body)
     return format_task(task)
 
 @router.get("/{project_id}/tasks")
@@ -287,8 +289,9 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
             setattr(project, "status", "pending_for_review")
             setattr(project, "modified_by", user_id)
             db.commit()
-
+    log_project_action(db, request.state.user_id, request.state.role, "UPDATED", "TASK", project_id, task.id, body)
     return format_task(task)
+
 
 @router.delete("/{project_id}/tasks/{task_id}")
 def delete_task(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
@@ -346,7 +349,7 @@ async def add_task_comment(project_id: int, task_id: int, request: Request, db: 
     db.add(comment)
     db.commit()
     db.refresh(comment)
-
+    log_project_action(db, request.state.user_id, request.state.role, "COMMENTED", "COMMENT", project_id, task_id, changes={"content": body["content"]})
     return format_comment(comment)
 
 @router.get("/{project_id}/tasks/{task_id}/comments")
@@ -361,3 +364,51 @@ def get_task_comments(project_id: int, task_id: int, request: Request, db: Sessi
     )
 
     return {"data": [format_comment(c) for c in comments]}
+
+
+# LOGS
+@router.get("/{project_id}/logs")
+def get_project_logs(project_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    logs = db.query(ProjectLog).filter(ProjectLog.project_id == project_id).order_by(ProjectLog.created_at.desc()).all()
+    
+    formatted_logs = [
+        {
+            "id": str(log.id),
+            "project_id": str(log.project_id),
+            "task_id": str(log.task_id) if log.task_id else None,
+            "user_id": str(log.user_id),
+            "user_role": log.user_role,
+            "action": log.action,
+            "entity_type": log.entity_type,
+            "changes": log.changes,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in logs
+    ]
+    return {"data": formatted_logs}
+
+@router.get("/{project_id}/tasks/{task_id}/logs")
+def get_task_logs(project_id: int, task_id: int, request: Request, db: Session = Depends(get_db)):
+    if request.state.role == "executive":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    logs = db.query(ProjectLog).filter(ProjectLog.task_id == task_id).order_by(ProjectLog.created_at.desc()).all()
+    
+    formatted_logs = [
+        {
+            "id": str(log.id),
+            "project_id": str(log.project_id),
+            "task_id": str(log.task_id) if log.task_id else None,
+            "user_id": str(log.user_id),
+            "user_role": log.user_role,
+            "action": log.action,
+            "entity_type": log.entity_type,
+            "changes": log.changes,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in logs
+    ]
+    return {"data": formatted_logs}

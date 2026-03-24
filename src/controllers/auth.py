@@ -119,5 +119,9 @@ users = {  #users for fast lookup
     3899927000005965050: "Sahil Kispotta",
     3899927000000318361: "Namrata Srivastava",
     3899927000000201013: "Anslem Prathap",
-    3899927000005965002: "Subhasini T S"
+    3899927000005965002: "Subhasini T S",
+    3899927000000615348: 'Ashok M',
+    3899927000000964875: 'Suraj Gupta',
+    3899927000000882594: 'Myisa Beiucy',
+    3899927000000723465: 'Kaveri Metri',
 }
