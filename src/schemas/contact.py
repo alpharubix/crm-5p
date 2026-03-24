@@ -16,9 +16,7 @@ class ContactBase(BaseModel):
     designation: Optional[str] = None
 
     # relationship
-    account_id: str
-
-    email: EmailStr
+    account_id: int # Pydantic will auto-cast incoming strings cleanly.
 
     # Communication
     email: EmailStr
@@ -38,13 +36,6 @@ class ContactBase(BaseModel):
 
     # Flexible Fields (JSONB)
     custom_fields: Dict[str, Any] = {}
-
-    @field_validator("account_id", mode="after")
-    @classmethod
-    def parse_account_id(cls, value):
-        if isinstance(value, str):
-            return int(value)
-        raise ValueError("account_id must be in string format")
 
 
 

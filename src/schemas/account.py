@@ -81,7 +81,7 @@ from datetime import datetime
 
 class AccountResponse(BaseModel):
 
-    id: Optional[int] = None
+    id: Optional[str] = None
     first_name: Optional[Any] = None
     last_name: Optional[Any] = None
     account_name: Optional[str] = None
@@ -99,13 +99,13 @@ class AccountResponse(BaseModel):
     source: Optional[str] = None
     account_stage: Optional[Any] = None
 
-    created_by_id: Optional[int] = None
+    created_by_id: Optional[str] = None
     created_time: Optional[datetime] = None
     modified_time: Optional[datetime] = None
     assignment_date: Optional[datetime|None] = None
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
     created_by: Optional[UserResponseAccount] = None
-    account_owner_id : Optional[int] = None
+    account_owner_id : Optional[str] = None
     owner:  Optional[UserResponseAccount] = None
     account_linked_contact: Optional[List["ContactResponse"]] = None
     deals: Optional[List["DealSchema"]] = None
@@ -124,8 +124,9 @@ class AccountResponse(BaseModel):
         else:
             return value
 
-    @field_serializer("id", "account_owner_id","created_by_id")
-    def coerce_ids_to_str(self, value):
+    @field_validator("id", "account_owner_id", "created_by_id", mode="before")
+    @classmethod
+    def coerce_ids_to_str(cls, value):
         return str(value) if value is not None else None
 
 class GetlistAccountResponse(BaseModel):
