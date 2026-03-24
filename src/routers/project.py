@@ -5,6 +5,7 @@ from ..database import get_db
 from ..models.project import Project, Task, TaskComment
 from ..models.project_log import ProjectLog
 from ..controllers.project_log import log_project_action
+from typing import Optional
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -68,20 +69,44 @@ async def create_project(request: Request, db: Session = Depends(get_db)):
 
 @router.get("")
 @router.get("/")
-def get_projects(request: Request, page: int = 1, db: Session = Depends(get_db)):
+def get_projects(
+    request: Request, 
+    page: int = 1, 
+    search: Optional[str] = None,
+    assignee_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    project_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
     if request.state.role == "executive":
         raise HTTPException(status_code=401, detail="Unauthorized Access")
 
     user_id = request.state.user_id
-    limit = 20
+    limit = 50
     offset = (page - 1) * limit
     
-    # Filter: Owner OR Approver OR User is in actioner_ids array
+    # 1. Base Authorization Filter
     query = db.query(Project).filter(
         (Project.created_by == user_id) | 
         (Project.approver_id == user_id) | 
         (Project.actioner_ids.any(user_id))
     )
+
+    # 2. Apply Dynamic Filters
+    if search:
+        query = query.filter(Project.name.ilike(f"%{search}%"))
+    if assignee_id:
+        query = query.filter(Project.actioner_ids.any(assignee_id))
+    if start_date:
+        query = query.filter(Project.start_date >= start_date)
+    if end_date:
+        query = query.filter(Project.end_date <= end_date)
+    if project_type:
+        query = query.filter(Project.project_type == project_type)
+    if status:
+        query = query.filter(Project.status == status)
 
     total = query.count()
     projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit).all()
@@ -90,7 +115,6 @@ def get_projects(request: Request, page: int = 1, db: Session = Depends(get_db))
         "data": [format_project(p) for p in projects],
         "page_info": {"page": page, "total": total},
     }
-
 
 @router.get("/{project_id}")
 def get_project(request:Request, project_id: int, db: Session = Depends(get_db)):

@@ -152,8 +152,9 @@ class AccountItem(BaseModel):
     id: str
     account_name: Any
 
-    @field_serializer("id")
-    def serialize_id(self, value):
+    @field_validator("id",mode="before")
+    @classmethod
+    def serialize_id(cls, value):
         return str(value)
 
 class ListAccountsResponse(BaseModel):
