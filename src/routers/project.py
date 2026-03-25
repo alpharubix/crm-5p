@@ -26,7 +26,8 @@ def format_project(p) -> dict:
         "start_date": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
         "end_date":   p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
         "actioner_ids": [str(i) for i in (p.actioner_ids or [])],
-        "project_type": p.project_type
+        "project_type": p.project_type,
+        "attachment_links": p.attachment_links or []
     }
 
 
@@ -58,7 +59,8 @@ async def create_project(request: Request, db: Session = Depends(get_db)):
         end_date     = body.get("end_date"),
         # Ensure array contains integers
         actioner_ids = [int(i) for i in body.get("actioner_ids", [])],
-        project_type = body.get("project_type")
+        project_type = body.get("project_type"),
+        attachment_links = body.get("attachment_links", [])
     )
 
     db.add(project)
@@ -142,7 +144,7 @@ async def update_project(project_id: int, request: Request, db: Session = Depend
     body = await request.json()
     
     # 1. Standard string/enum fields
-    allowed = ["name", "description", "priority", "status", "project_type"]
+    allowed = ["name", "description", "priority", "status", "project_type", "attachment_links"]
     for field in allowed:
         if field in body:
             setattr(project, field, body[field])
