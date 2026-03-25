@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -64,7 +64,7 @@ class Project(Base):
     creator = relationship("User", foreign_keys=[created_by])
     tasks = relationship("Task", back_populates="project")
     project_type = Column(Enum(ProjectTypeEnum), nullable=True)
-
+    attachment_links = Column(JSON, default=list)
 
 class Task(Base):
     __tablename__ = "tasks"
