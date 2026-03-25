@@ -2,6 +2,8 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
 from starlette.requests import Request
+
+from src.schemas.deals import DealSchema
 from src.schemas.deals import DealListResponse,DealCreationBody
 from src.controllers.deals import get_deals,create_deal,update_deal_based_on_id
 from src.database import get_db,get_mongodb
@@ -41,8 +43,8 @@ def get_deals_list(
         deal_owner_id,
     )
 
-@deals_router.post("/", response_model=DealCreationBody)
-@deals_router.post("",response_model=DealCreationBody)
+@deals_router.post("/", response_model=DealSchema)
+@deals_router.post("",response_model=DealSchema)
 def create_deal_route_function(deal:DealCreationBody,request:Request,db:Session=Depends(get_db),):
     return create_deal(deal,db,request.state.user_id, request.state.role)
 
