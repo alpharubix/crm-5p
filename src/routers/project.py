@@ -309,12 +309,12 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
     db.refresh(task)
 
 # ── Auto-move project to pending_for_review if all tasks are done ──
-    if body.get("status") == "done":
-        all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
-        if len(all_tasks) > 0 and all(t.status == "done" for t in all_tasks):
-            setattr(project, "status", "pending_for_review")
-            setattr(project, "modified_by", user_id)
-            db.commit()
+    # if body.get("status") == "done":
+    #     all_tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    #     if len(all_tasks) > 0 and all(t.status == "done" for t in all_tasks):
+    #         setattr(project, "status", "pending_for_review")
+    #         setattr(project, "modified_by", user_id)
+    #         db.commit()
     log_project_action(db, request.state.user_id, request.state.role, "UPDATED", "TASK", project_id, task.id, body)
     return format_task(task)
 
