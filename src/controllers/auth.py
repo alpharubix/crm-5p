@@ -34,7 +34,7 @@ def validate_login(body: Login, db: Session):
                     httponly=True,
                     secure=True,
                     samesite="none",
-                    max_age= 1800
+                    max_age=60 * 60 * 24 * 30  # 30 days
                 )
                 return response
     except HTTPException as error:
