@@ -6,6 +6,7 @@ from ..models.project import Project, Task, TaskComment
 from ..models.project_log import ProjectLog
 from ..controllers.project_log import log_project_action
 from typing import Optional
+from datetime import datetime
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -201,6 +202,10 @@ def format_task(t) -> dict:
         "modified_by": str(t.modified_by) if t.modified_by else None,
         "created_at": t.created_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p"),
         "modified_at": t.modified_at.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if t.modified_at else None,
+        "start_date": t.start_date.strftime("%Y-%m-%d") if t.start_date else None,
+        "end_date": t.end_date.strftime("%Y-%m-%d") if t.end_date else None,
+        "actual_completion_date": t.actual_completion_date.strftime("%Y-%m-%d") if t.actual_completion_date else None,
+        "attachment_links": t.attachment_links or [],
         "assignee_name": t.assignee.full_name if t.assignee else None,
     }
 
@@ -243,6 +248,9 @@ async def create_task(project_id: int, request: Request, db: Session = Depends(g
         # CHANGED: Cast string ID to int
         assignee_id = int(body["assignee_id"]) if body.get("assignee_id") else None,
         created_by  = request.state.user_id,
+        start_date  = body.get("start_date"),
+        end_date    = body.get("end_date"),
+        attachment_links = body.get("attachment_links", []),
     )
     db.add(task)
     db.commit()
@@ -251,17 +259,24 @@ async def create_task(project_id: int, request: Request, db: Session = Depends(g
     return format_task(task)
 
 @router.get("/{project_id}/tasks")
-def get_tasks(project_id: int, db: Session = Depends(get_db)):
+def get_tasks(
+    project_id: int, 
+    assignee_id: Optional[int] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    tasks = (
-        db.query(Task)
-        .filter(Task.project_id == project_id)
-        .order_by(Task.created_at.desc())
-        .all()
-    )
+    query = db.query(Task).filter(Task.project_id == project_id)
+
+    if assignee_id:
+        query = query.filter(Task.assignee_id == assignee_id)
+    if status:
+        query = query.filter(Task.status == status)
+
+    tasks = query.order_by(Task.created_at.desc()).all()
 
     return {"data": [format_task(t) for t in tasks]}
 
@@ -294,7 +309,7 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
         raise HTTPException(status_code=403, detail="Only project members can edit tasks")
 
     # --- CHANGED: All members get full edit access ---
-    allowed = ["title", "description", "type", "priority", "status", "assignee_id"]
+    allowed = ["title", "description", "type", "priority", "status", "assignee_id", "start_date", "end_date", "actual_completion_date", "attachment_links"]
 
     for field in allowed:
         if field in body:
@@ -305,6 +320,8 @@ async def update_task(project_id: int, task_id: int, request: Request, db: Sessi
                 setattr(task, field, body[field])
 
     task.modified_by = user_id
+    if body.get("status") == "done" and not task.actual_completion_date: #type: ignore
+        setattr(task, "actual_completion_date", datetime.now(IST))
     db.commit()
     db.refresh(task)
 
