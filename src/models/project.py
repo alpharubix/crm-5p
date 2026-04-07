@@ -81,6 +81,10 @@ class Task(Base):
     modified_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     modified_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    start_date  = Column(DateTime(timezone=True), nullable=True)
+    end_date    = Column(DateTime(timezone=True), nullable=True)
+    actual_completion_date = Column(DateTime(timezone=True), nullable=True)
+    attachment_links       = Column(JSON, default=list)
 
     project     = relationship("Project", back_populates="tasks")
     assignee    = relationship("User", foreign_keys=[assignee_id])
