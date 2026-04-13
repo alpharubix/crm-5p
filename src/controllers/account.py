@@ -16,6 +16,7 @@ from src.controllers.audit_log import log_action
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 from src.utility.utils import get_account_headers
+from src.models.ticket import Ticket
 
 from ..models.account import Account, AccountStatusHistory
 from ..schemas.account import AccountBase, ListAccountsResponse
@@ -99,9 +100,7 @@ def get_all_accounts(
     account_owner_id: Optional[int] = None,
     phone_number: Optional[str] = None,
 ):
-    MANAGER_EXECUTIVES_MAP = (
-        MANAGERID().MANAGER_EXECUTIVES_MAP
-    )  # manager is mapping object
+    MANAGER_EXECUTIVES_MAP = MANAGERID().MANAGER_EXECUTIVES_MAP
 
     limit = 30
     offset = (page - 1) * limit
@@ -110,19 +109,15 @@ def get_all_accounts(
     user_id = request.state.user_id
     role = request.state.role
     single_id_request = False
-
     allowed_owner_ids = None
 
     if role in ("super_admin", "admin"):
-        pass  # no restriction
-
+        pass
     elif role == "manager":
         allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
-
     elif role == "executive":
         allowed_owner_ids = [user_id]
 
-    # filters.append(Account.account_owner_id == request.state.user_id)
     if allowed_owner_ids is not None:
         filters.append(Account.account_owner_id.in_(allowed_owner_ids))
 
@@ -130,7 +125,6 @@ def get_all_accounts(
         filters.append(Account.id == account_id)
         single_id_request = True
     if account_name:
-        print("account_name ",account_name)
         filters.append(Account.account_name.ilike(f"%{account_name.strip()}%"))
     if account_status:
         filters.append(Account.account_status.ilike(f"{account_status.strip()}%"))
@@ -153,7 +147,7 @@ def get_all_accounts(
     if business_status:
         filters.append(Account.business_status == business_status)
     if call_back_date_time:
-        filters.append(Account.call_back_date_time != None)  # excludes NULLs explicitly
+        filters.append(Account.call_back_date_time != None)
         filters.append(Account.call_back_date_time <= call_back_date_time)
     if phone_number and phone_number.strip():
         filters.append(
@@ -169,92 +163,118 @@ def get_all_accounts(
         elif user_id not in MANAGER_EXECUTIVES_MAP:
             raise HTTPException(
                 status_code=403,
-                detail={
-                    "message": "You do not have permission to access records for this account owner",
-                    "success": False,
-                },
+                detail={"message": "You do not have permission to access records for this account owner", "success": False},
             )
         elif account_owner_id in MANAGER_EXECUTIVES_MAP.get(user_id):
             filters.append(Account.account_owner_id == int(account_owner_id))
         else:
             raise HTTPException(
                 status_code=403,
-                detail={
-                    "message": "You do not have permission to access records for this account owner",
-                    "success": False,
-                },
+                detail={"message": "You do not have permission to access records for this account owner", "success": False},
             )
-    if single_id_request: #differenciate between single account_id request or other request
+
+    if single_id_request:
         base_query = query.filter(and_(*filters)) if filters else query
         total_data_size = base_query.count()
         data = (
-            base_query.offset(offset)  # query performance optimization
+            base_query.offset(offset)
             .options(
                 selectinload(Account.owner),
                 selectinload(Account.created_by),
                 selectinload(Account.account_linked_contact),
-                selectinload(Account.deals)
+                selectinload(Account.deals),
             )
             .limit(limit)
             .all()
         )
-        if len(data) != 0:
-            ids_list = [] #this holds all the id's
-            acc:Account = data[0]
-            ids_list.append(str(acc.id))
-            for contact in acc.account_linked_contact: #This loop will collect all the contact id
-                ids_list.append(str(contact.id))
-            for deal in acc.deals:
-                ids_list.append(str(deal.id)) #this will fetch the new notes
-                if deal.crm_deal_id:#this will fetch the old notes which is migrated from the crm
-                    ids_list.append(str(deal.crm_deal_id))
-            print(ids_list)
-            notes = get_notes(
-                id_list=ids_list, notes_collection=mongodb["Notes"]
-            )
-            #after getting all the notes for this account append this notes as a attribute to the account object
 
+        if len(data) != 0:
+            ids_list = []
+            acc: Account = data[0]
+            ids_list.append(str(acc.id))
+
+            # 1. Collect contact IDs
+            for contact in acc.account_linked_contact:
+                ids_list.append(str(contact.id))
+
+            # 2. Collect deal IDs
+            deal_ids_for_tickets = []
+            for deal in acc.deals:
+                ids_list.append(str(deal.id))
+                deal_ids_for_tickets.append(deal.id)
+                if deal.crm_deal_id:
+                    ids_list.append(str(deal.crm_deal_id))
+
+            # 3. Query tickets and build lookup dict
+            tickets_by_deal: dict[int, list] = {}
+            if deal_ids_for_tickets:
+                ticket_records = (
+                    db.query(Ticket)
+                    .filter(Ticket.deal_id.in_(deal_ids_for_tickets))
+                    .all()
+                )
+                for ticket in ticket_records:
+                    ids_list.append(str(ticket.id))
+                    ticket_dict = {
+                        c.name: getattr(ticket, c.name)
+                        for c in ticket.__table__.columns
+                    }
+                    ticket_dict["id"] = str(ticket_dict["id"])
+                    ticket_dict["deal_id"] = str(ticket_dict["deal_id"])
+                    tickets_by_deal.setdefault(ticket.deal_id, []).append(ticket_dict)
+
+            # 4. Attach tickets to deals AFTER tickets_by_deal is fully built
+            for deal in acc.deals:
+                deal._tickets_list = tickets_by_deal.get(deal.id, [])
+
+            # 5. Fetch notes
+            notes = get_notes(
+                id_list=ids_list,
+                notes_collection=mongodb["Notes"],
+                module_name=["Accounts", "Contacts", "Deals", "Tickets"],
+            )
             acc.notes = notes
 
         total_pages = math.ceil(total_data_size / limit)
-
         return {
-            "data": data,  # Return the clean dictionaries
+            "data": data,
             "page_info": {
                 "page": page,
                 "total_pages": total_pages,
                 "data_size": total_data_size,
             },
         }
+
     else:
-        data = (db.query(
-            Account.id,
-            Account.account_name,
-            Account.account_owner_id,
-            Account.account_status,
-            Account.source,
-            Account.type_of_business,
-            Account.industry,
-            Account.state,
-            Account.city,
-            Account.call_back_date_time,
-            Account.phone
+        data = (
+            db.query(
+                Account.id,
+                Account.account_name,
+                Account.account_owner_id,
+                Account.account_status,
+                Account.source,
+                Account.type_of_business,
+                Account.industry,
+                Account.state,
+                Account.city,
+                Account.call_back_date_time,
+                Account.phone,
+            )
+            .filter(and_(*filters))
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
-                .filter(and_(*filters))
-                .offset(offset)
-                .limit(limit)
-                .all())
         total_data_size = query.filter(*filters).count()
         total_pages = math.ceil(total_data_size / limit)
         return {
-            "data": data,  # Return the clean dictionaries
+            "data": data,
             "page_info": {
                 "page": page,
                 "total_pages": total_pages,
                 "data_size": total_data_size,
-            }
+            },
         }
-
 def update_account(
     db: Session, account_id: int, payload: Dict[str, Any], user_id: int, user_role: str
 ):

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_serializer, Field, ConfigDict, field_validator
+from pydantic import BaseModel, field_serializer, Field, ConfigDict, field_validator,model_validator
 from typing import Optional, Any, List
 from datetime import datetime, timezone, timedelta, date
 from src.schemas.user import UserResponseAccount
@@ -76,6 +76,23 @@ class DealSchema(BaseModel):
     crm_deal_id: str | None = None
     owner: UserResponseAccount | None = None  # optional now — safe for both paths
     notes: Any | None = None
+    
+    tickets: list[dict] | None = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def extract_tickets_list(cls, value):
+        if hasattr(value, '_tickets_list'):
+            data = {
+                c.name: getattr(value, c.name, None)
+                for c in value.__table__.columns
+            }
+            data['tickets'] = value._tickets_list
+            for attr in ('owner', 'notes'):
+                if hasattr(value, attr):
+                    data[attr] = getattr(value, attr)
+            return data
+        return value
 
     @field_serializer("deal_call_back_datetime", "created_at", "updated_at")
     def serialize_datetime(self, value):
@@ -97,8 +114,8 @@ class DealSchema(BaseModel):
 
 
 class DealListResponse(BaseModel):
-    data: list[DealSchema] = []
-    page_info: dict[str, Any]
+    data: list[DealSchema] | dict | None = []
+    page_info: dict[str, Any] | None = None
 
 class DealCreationBody(BaseModel):
 
