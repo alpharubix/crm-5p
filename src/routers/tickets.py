@@ -1,0 +1,169 @@
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+from src.database import get_db
+from src.models.ticket import Ticket
+from src.database import get_mongodb
+from src.controllers.notes import get_notes
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import and_
+from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+# Ensure Deal is imported
+from src.models.deal import Deal 
+from src.models.ticket import Ticket
+from src.database import get_db
+
+tickets_router = APIRouter(prefix="/tickets", tags=["tickets"])
+
+# Helper function to format the database model into a dictionary
+def format_ticket(t: Ticket) -> dict:
+    data = {c.name: getattr(t, c.name) for c in t.__table__.columns}
+    for key in ("id", "deal_id", "created_by", "modified_by", "partner_code"):
+        if data.get(key) is not None:
+            data[key] = str(data[key])
+    return data
+
+@tickets_router.get("")
+@tickets_router.get("/")
+def get_tickets_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    page: int = 1,
+    deal_id: int | None = None,
+    kanban: bool = False,
+    created_from: str | None = None,
+    created_to: str | None = None,
+    ticket_status: str | None = None,
+    type_of_loan: str | None = None,
+    account_name: str | None = None,
+):
+    filters = []
+
+    if deal_id:
+        filters.append(Ticket.deal_id == deal_id)
+    if ticket_status:
+        filters.append(Ticket.ticket_status.ilike(f"%{ticket_status.strip()}%"))
+    if type_of_loan:
+        filters.append(Ticket.type_of_loan.ilike(f"%{type_of_loan.strip()}%"))
+
+    if kanban:
+        # Default to last 30 days if no dates provided
+        date_from = (
+            datetime.strptime(created_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            if created_from
+            else datetime.now(timezone.utc) - timedelta(days=30)
+        )
+        date_to = (
+            datetime.strptime(created_to, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            if created_to
+            else datetime.now(timezone.utc)
+        )
+        filters.append(Ticket.created_at >= date_from)
+        filters.append(Ticket.created_at <= date_to)
+
+        # Join Deal to filter by account_name and fetch it for the frontend cards
+        query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
+        
+        if account_name:
+            query = query.filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+
+        tickets = query.options(selectinload(Ticket.deal)).all()
+
+        grouped_data = {}
+        for t in tickets:
+            status = t.ticket_status or "No Status"
+            ticket_dict = format_ticket(t)
+            # Inject deal details required by the Kanban cards
+            ticket_dict["account_name"] = t.deal.account_name if t.deal else "-"
+            ticket_dict["deal_owner_id"] = str(t.deal.deal_owner_id) if t.deal and t.deal.deal_owner_id else None
+            
+            grouped_data.setdefault(status, []).append(ticket_dict)
+
+        return {"data": grouped_data, "page_info": None}
+
+    # Standard List View Logic
+    limit = 50
+    offset = (page - 1) * limit
+    
+    query = db.query(Ticket).filter(and_(*filters))
+    
+    if account_name:
+         query = query.join(Deal, Ticket.deal_id == Deal.id).filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+
+    total = query.count()
+    tickets = query.order_by(Ticket.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "data": [format_ticket(t) for t in tickets],
+        "page_info": {"page": page, "total": total}
+    }
+
+@tickets_router.post("")
+@tickets_router.post("/")
+async def create_ticket(request: Request, db: Session = Depends(get_db)):
+    body = await request.json()
+    
+    # Ensure the ticket is attached to a deal
+    if "deal_id" not in body:
+        raise HTTPException(status_code=400, detail="deal_id is required")
+
+    ticket = Ticket(
+        **body,
+        created_by=request.state.user_id
+    )
+    
+    db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
+    return format_ticket(ticket)
+
+@tickets_router.patch("/{ticket_id}")
+@tickets_router.put("/{ticket_id}")
+async def update_ticket(ticket_id: int, request: Request, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    body = await request.json()
+    
+    # Prevent users from overwriting critical ID/tracking fields
+    body.pop("id", None)
+    body.pop("deal_id", None)
+    body.pop("created_at", None)
+    body.pop("created_by", None)
+
+    for key, value in body.items():
+        if hasattr(ticket, key):
+            setattr(ticket, key, value)
+            
+    ticket.modified_by = request.state.user_id
+    db.commit()
+    db.refresh(ticket)
+    return format_ticket(ticket)
+
+@tickets_router.get("/{ticket_id}")
+def get_ticket(ticket_id: int, request: Request, db: Session = Depends(get_db), mongodb_conn=Depends(get_mongodb)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    result = format_ticket(ticket)
+    result["notes"] = get_notes(
+        id_list=[str(ticket_id)],
+        notes_collection=mongodb_conn["Notes"],
+        module_name="Tickets"
+    )
+    return result
+
+@tickets_router.delete("/{ticket_id}")
+def delete_ticket(ticket_id: int, request: Request, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
+    db.delete(ticket)
+    db.commit()
+    return {"message": "Ticket deleted"}

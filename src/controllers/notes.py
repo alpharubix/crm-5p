@@ -10,6 +10,7 @@ from src.models.user import User
 from src.models.account import Account
 from src.models.contact import Contact
 from src.models.deal import Deal
+from src.models.ticket import Ticket
 from .audit_log import log_action
 from datetime import timezone
 from datetime import datetime
@@ -36,6 +37,12 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             Parent_Id = {
                 "id": str(raw_parent_con.id),
                 "contact_name": raw_parent_con.last_name,
+            }
+        elif module_name == 'Tickets':
+            raw_parent_ticket = pg_db.query(Ticket.id, Deal.account_name).join(Deal, Ticket.deal_id == Deal.id).filter(Ticket.id == int(parent_id)).first()
+            Parent_Id = {
+                "id": str(raw_parent_ticket.id),
+                "ticket_name": raw_parent_ticket.account_name, # Storing account name for visual reference, or you can change this
             }
         else:
             raw_parent_deal = pg_db.query(Deal.id,Deal.account_name).filter(Deal.id == int(parent_id)).first()
@@ -87,14 +94,21 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-def get_notes(id_list:Any,notes_collection: Collection):
+def get_notes(id_list:Any,notes_collection: Collection, module_name: str | list[str] = None):
     try:
         filter_query = (
             {"Parent_Id.id": {"$in": id_list}}
             if isinstance(id_list, list)
             else {"Parent_Id.id": id_list}
         )
-
+        # Add module filtering to prevent ID overlap issues
+        if module_name:
+            if isinstance(module_name, list):
+                filter_query["module"] = {"$in": module_name}
+            else:
+                filter_query["module"] = module_name
+        
+        
         projection = {
             "_id": 0,
             "Owner": 1,
