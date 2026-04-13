@@ -67,7 +67,9 @@ def get_me(request:Request,db):
 
 
 def get_user_filter(request: Request, db):
-    user_id = request.state.user_id
+    print(repr(request.state.user_id))
+    print(type(request.state.user_id))
+    user_id = int(request.state.user_id)
     role = request.state.role
     # print(role)
     MANAGER_EXECUTIVE_MAP = MANAGERID().MANAGER_EXECUTIVES_MAP

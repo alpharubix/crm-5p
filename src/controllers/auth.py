@@ -49,7 +49,12 @@ class MANAGERID:
     MANAGER_EXECUTIVES_MAP = {
         # Namrata
         3899927000000318361: [
-            3899927000000318361,  #Namrata
+            3899927000000240595,  # Chiranjeevi B S
+            3899927000000498931,  # Karthik H M
+            3899927000000647914,  # Prajwal G P
+            3899927000000208140,  # Shivaraj P N
+            3899927000000488938,  # Nagaraj
+            3899927000000318361,  # Namrata
             3899927000005965018,  # Arjun
             3899927000004429017,  # Sandeep
             3899927000004808001,  # Ayush
@@ -60,7 +65,12 @@ class MANAGERID:
         ],
         # Sutapa Roy
         3899927000005114050: [
-            3899927000005114050,  #sutapa
+            3899927000000240595,  # Chiranjeevi B S
+            3899927000000498931,  # Karthik H M
+            3899927000000647914,  # Prajwal G P
+            3899927000000208140,  # Shivaraj P N
+            3899927000000488938,  # Nagaraj 
+            3899927000005114050,  # sutapa
             3899927000005965018,  # Arjun
             3899927000004429017,  # Sandeep
             3899927000004808001,  # Ayush
@@ -71,10 +81,18 @@ class MANAGERID:
         ],
         # Manjunath
         3899927000005114004: [
-            3899927000005114004,  #manjunath
+            3899927000005114004,  # manjunath
             3899927000005965018,  # Arjun
             3899927000004429017,  # Sandeep
             3899927000007673012,  # Honappa
+        ],
+        # Nagaraj 
+        3899927000000488938 :[
+            3899927000000240595,  # Chiranjeevi B S
+            3899927000000498931,  # Karthik H M
+            3899927000000647914,  # Prajwal G P
+            3899927000000208140,  # Shivaraj P N
+            3899927000000488938,  # Nagaraj 
         ],
         # # Digamber
         # 3899927000005114020: [
@@ -124,4 +142,9 @@ users = {  #users for fast lookup
     3899927000000964875: 'Suraj Gupta',
     3899927000000882594: 'Myisa Beiucy',
     3899927000000723465: 'Kaveri Metri',
+    3899927000000488938: 'Nagaraj Hodmany',
+    3899927000000208140: 'Shivaraj P N',
+    3899927000000647914: 'Prajwal G P',
+    3899927000000498931: 'Karthik H M',
+    3899927000000240595: 'Chiranjeevi B S'
 }
