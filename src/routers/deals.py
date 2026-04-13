@@ -43,8 +43,9 @@ def get_deals_list(
 
 @deals_router.post("/", response_model=DealSchema)
 @deals_router.post("", response_model=DealSchema)
-def create_deal_route_function(deal: DealCreationBody, request: Request, db: Session = Depends(get_db)):
-    return create_deal(deal, db, request.state.user_id, request.state.role)
+@deals_router.post("",response_model=DealSchema)
+def create_deal_route_function(deal:DealCreationBody,request:Request,db:Session=Depends(get_db),):
+    return create_deal(deal,db,request.state.user_id, request.state.role)
 
 @deals_router.put("/{deal_id}")
 async def update_deal(

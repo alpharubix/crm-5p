@@ -122,9 +122,9 @@ class DealCreationBody(BaseModel):
     # Primary Key
     id: Optional[int] = None
     # Relationship
-    account_id: str
+    account_id: int  # ← str → int
 
-    # Deal & Ticket InfoS
+    # Deal & Ticket Info
     ticket_id: Optional[int] = None
     ticket_number: Optional[int] = None
     deal_type: Optional[str] = None
@@ -184,12 +184,10 @@ class DealCreationBody(BaseModel):
     deal_owner_id: Optional[int] = None
     crm_deal_id: Optional[int] = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
 
-    # ---- ID Serializers ----
-    @field_serializer(
+    # ---- ID Validators ----
+    @field_validator(
         "id",
         "account_id",
         "ticket_id",
@@ -199,24 +197,24 @@ class DealCreationBody(BaseModel):
         "modified_by",
         "deal_owner_id",
         "crm_deal_id",
+        mode="before",  # ← before, not after
     )
-    def serialize_ids(self, value):
+    @classmethod
+    def parse_ids(cls, value):
         return int(value) if value is not None else None
 
-
-@field_serializer("deal_call_back_datetime")
-def serialize_datetime(self, value) -> Optional[str]:
-    if value is None:
+    # ---- Datetime Serializer ----
+    @field_serializer("deal_call_back_datetime")
+    def serialize_datetime(self, value) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=IST)
+            return value.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S")
+        if isinstance(value, str):
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=IST)
+            return parsed.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S")
         return None
-
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=IST)
-        return value.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S")
-
-    if isinstance(value, str):
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=IST)
-        return parsed.astimezone(IST).strftime("%Y-%m-%dT%H:%M:%S")
-    return None
