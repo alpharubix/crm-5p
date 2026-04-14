@@ -14,6 +14,8 @@ from src.models.deal import Deal
 from src.models.ticket import Ticket
 from src.database import get_db
 from src.controllers.auth import MANAGERID
+from src.controllers.audit_log import log_action
+from fastapi.encoders import jsonable_encoder
 
 tickets_router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -131,13 +133,21 @@ async def create_ticket(request: Request, db: Session = Depends(get_db)):
 
     filtered_body = {k: v for k, v in body.items() if k in allowed_fields}
 
-    ticket = Ticket(**filtered_body, created_by=request.state.user_id)
+    user_id = request.state.user_id
+    user_role = request.state.role
+
+    ticket = Ticket(**filtered_body, created_by=user_id)
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
-    return format_ticket(ticket)
+    
+    ticket_dict = format_ticket(ticket)
+    safe_payload = jsonable_encoder(ticket_dict)
 
-# restrict deal and ticket access , owner based.
+    log_action(db, user_id, user_role, "CREATED", "Ticket", ticket.id, safe_payload)
+    
+    return ticket_dict
+
 
 @tickets_router.patch("/{ticket_id}")
 @tickets_router.put("/{ticket_id}")
@@ -149,7 +159,6 @@ async def update_ticket(ticket_id: int, request: Request, db: Session = Depends(
 
     body = await request.json()
     
-    # Prevent users from overwriting critical ID/tracking fields
     body.pop("id", None)
     body.pop("deal_id", None)
     body.pop("created_at", None)
@@ -159,9 +168,15 @@ async def update_ticket(ticket_id: int, request: Request, db: Session = Depends(
         if hasattr(ticket, key):
             setattr(ticket, key, value)
             
-    ticket.modified_by = request.state.user_id
+    user_id = request.state.user_id
+    user_role = request.state.role
+    ticket.modified_by = user_id
+
     db.commit()
     db.refresh(ticket)
+    
+    log_action(db, user_id, user_role, "UPDATED", "Ticket", ticket.id, body)
+    
     return format_ticket(ticket)
 
 @tickets_router.get("/{ticket_id}")
