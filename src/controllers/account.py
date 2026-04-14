@@ -461,18 +461,16 @@ def update_and_insert_accounts(insertion_accounts, updation_accounts, db: Sessio
 
 
 async def update_accounts_based_on_csv(file, db: Session, user_id: int):
+    insertion_accounts, updation_accounts, error_list = [], [], []
+    row_number = 1
+
     try:
-        # Validate file type
         if not file.filename.endswith(".csv"):
-            raise HTTPException(
-                status_code=400, detail={"message": "only support csv file"}
-            )
+            raise HTTPException(status_code=400, detail="only support csv file")
 
         contents = await file.read()
-        decoded = contents.decode("utf-8").splitlines()
-
+        decoded = contents.decode("utf-8-sig", errors="replace").splitlines()
         reader = csv.DictReader(decoded)
-
         data = list(reader)
 
         if not data:
@@ -480,84 +478,51 @@ async def update_accounts_based_on_csv(file, db: Session, user_id: int):
 
         # Header validation
         account_headers = get_account_headers()
-        csv_headers = {col.strip().lower() for col in reader.fieldnames}
-
-        header_difference = account_headers - csv_headers
-
-        if header_difference:
+        csv_headers = {col.strip().lower() for col in (reader.fieldnames or [])}
+        if account_headers - csv_headers:
             raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": f"Excel headers mismatch found fields-{header_difference}"
-                },
+                status_code=400, 
+                detail=f"Header mismatch: {account_headers - csv_headers}"
             )
 
-        insertion_accounts = []
-        updation_accounts = []
-        error_list = []
-        row_number = 1
         for row in data:
             row_number += 1
-            # Convert empty strings to None
-            row = {
-                k: (v.strip() if v and v.strip() != "" else None)
-                for k, v in row.items()
-            }
+            try:
+                # Clean and identify row type
+                row = {k: (v.strip() if v and v.strip() else None) for k, v in row.items()}
+                is_new = not row.get("id")
 
-            is_new = not row.get("id")
-
-            # 🔹 Convert ID
-            if row.get("id"):
-                try:
+                # Type conversions
+                if row.get("id"):
                     row["id"] = int(row["id"])
-                except ValueError:
-                    print("id is not an integer")
-                    raise ValueError("id must be an integer")
-
-            # Convert datetime
-            if row.get("call_back_date_time"):
-                try:
+                
+                if row.get("call_back_date_time"):
                     row["call_back_date_time"] = datetime.strptime(
                         row["call_back_date_time"], "%m/%d/%Y %H:%M"
                     )
-                except ValueError:
-                    raise ValueError("Invalid date format in call_back_date_time")
 
-            else:
-                row["call_back_date_time"] = None
+                if row.get("waba_interested"):
+                    val = row["waba_interested"].lower()
+                    row["waba_interested"] = val in ["yes", "true", "1"]
 
-            # Convert boolean
-            if row.get("waba_interested"):
-                val = row["waba_interested"].lower()
-                if val in ["yes", "true", "1"]:
-                    row["waba_interested"] = True
-                elif val in ["no", "false", "0"]:
-                    row["waba_interested"] = False
+                if is_new:
+                    row.pop("id", None)
+                    row["account_owner_id"] = row.get("account_owner_id") or user_id
+                    row["created_by_id"] = int(user_id)
+                    insertion_accounts.append(row)
                 else:
-                    raise ValueError("Invalid waba interest value")
-            else:
-                row["waba_interested"] = None
+                    updation_accounts.append({k: v for k, v in row.items() if v is not None})
 
-            # Separate create vs update
-            if is_new:
-                row.pop("id")
-                if (
-                    row.get(
-                        "account_owner_id",
-                    )
-                    is None
-                ):
-                    row["account_owner_id"] = user_id
-                row["created_by_id"] = int(user_id)
-                insertion_accounts.append(row)
-            else:
-                cleaned_row = {k: v for k, v in row.items() if v is not None}
-                updation_accounts.append(cleaned_row)
-        print(insertion_accounts)
-        print(updation_accounts)
-        db_result = update_and_insert_accounts(
-            insertion_accounts, updation_accounts, db
-        )
+            except Exception as row_err:
+                error_list.append({"row": row_number, "error": str(row_err)})
+
+        if not insertion_accounts and not updation_accounts:
+            return JSONResponse(
+                status_code=200, 
+                content={"total_inserted": 0, "total_updated": 0, "row_errors": error_list}
+            )
+
+        db_result = update_and_insert_accounts(insertion_accounts, updation_accounts, db)
         return JSONResponse(
             status_code=200,
             content={
@@ -567,8 +532,10 @@ async def update_accounts_based_on_csv(file, db: Session, user_id: int):
             },
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        error_list.append({"row": row_number, "error": str(e)})
-    finally:
-        if len(insertion_accounts) == 0 and len(updation_accounts) == 0:
-            return {"total_inserted": 0, "total_updated": 0, "row_errors": error_list}
+        return JSONResponse(
+            status_code=500, 
+            content={"detail": f"Processing error: {str(e)}", "row_errors": error_list}
+        )
