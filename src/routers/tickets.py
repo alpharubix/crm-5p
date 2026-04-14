@@ -104,19 +104,28 @@ def get_tickets_list(
 async def create_ticket(request: Request, db: Session = Depends(get_db)):
     body = await request.json()
     
-    # Ensure the ticket is attached to a deal
     if "deal_id" not in body:
         raise HTTPException(status_code=400, detail="deal_id is required")
 
-    ticket = Ticket(
-        **body,
-        created_by=request.state.user_id
-    )
-    
+    allowed_fields = {
+        "deal_id", "loan_account_status", "ticket_login", "lender_name",
+        "potential", "lender_login_type", "lender_login_date", "partner_code",
+        "targeted_disbursement_date", "type_of_loan", "disbursement_date",
+        "ticket_status", "ticket_stage", "approved_amount", "sanction_amount",
+        "processing_fees", "disbursed_amount", "pf_percentage", "tenure",
+        "insurance_amount", "loan_start_date", "rate_of_interest", "loan_end_date",
+        "interest_type", "lender_rejection_reason", "lender_rejection_status_explanation",
+    }
+
+    filtered_body = {k: v for k, v in body.items() if k in allowed_fields}
+
+    ticket = Ticket(**filtered_body, created_by=request.state.user_id)
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
     return format_ticket(ticket)
+
+# restrict deal and ticket access , owner based.
 
 @tickets_router.patch("/{ticket_id}")
 @tickets_router.put("/{ticket_id}")
