@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from src.models.deal import Deal 
 from src.models.ticket import Ticket
 from src.database import get_db
+from src.controllers.auth import MANAGERID
 
 tickets_router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -38,6 +39,17 @@ def get_tickets_list(
     type_of_loan: str | None = None,
     account_name: str | None = None,
 ):
+
+    MANAGER_EXECUTIVES_MAP = MANAGERID.MANAGER_EXECUTIVES_MAP
+    user_id = request.state.user_id
+    user_role = request.state.role
+
+    allowed_owner_ids = None
+    if user_role == "manager":
+        allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
+    elif user_role == "executive":
+        allowed_owner_ids = [user_id]
+
     filters = []
 
     if deal_id:
@@ -48,7 +60,6 @@ def get_tickets_list(
         filters.append(Ticket.type_of_loan.ilike(f"%{type_of_loan.strip()}%"))
 
     if kanban:
-        # Default to last 30 days if no dates provided
         date_from = (
             datetime.strptime(created_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             if created_from
@@ -62,9 +73,10 @@ def get_tickets_list(
         filters.append(Ticket.created_at >= date_from)
         filters.append(Ticket.created_at <= date_to)
 
-        # Join Deal to filter by account_name and fetch it for the frontend cards
         query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
-        
+
+        if allowed_owner_ids is not None:
+            query = query.filter(Deal.deal_owner_id.in_(allowed_owner_ids))
         if account_name:
             query = query.filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
 
@@ -74,22 +86,22 @@ def get_tickets_list(
         for t in tickets:
             status = t.ticket_status or "No Status"
             ticket_dict = format_ticket(t)
-            # Inject deal details required by the Kanban cards
             ticket_dict["account_name"] = t.deal.account_name if t.deal else "-"
             ticket_dict["deal_owner_id"] = str(t.deal.deal_owner_id) if t.deal and t.deal.deal_owner_id else None
-            
             grouped_data.setdefault(status, []).append(ticket_dict)
 
         return {"data": grouped_data, "page_info": None}
 
-    # Standard List View Logic
+    # Standard list view
     limit = 50
     offset = (page - 1) * limit
-    
-    query = db.query(Ticket).filter(and_(*filters))
-    
+
+    query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
+
+    if allowed_owner_ids is not None:
+        query = query.filter(Deal.deal_owner_id.in_(allowed_owner_ids))
     if account_name:
-         query = query.join(Deal, Ticket.deal_id == Deal.id).filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+        query = query.filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
 
     total = query.count()
     tickets = query.order_by(Ticket.created_at.desc()).offset(offset).limit(limit).all()
