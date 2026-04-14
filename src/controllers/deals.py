@@ -2,6 +2,7 @@ import math
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_
 from sqlalchemy.orm import Session, selectinload
 
@@ -193,22 +194,22 @@ def get_deals(
 def create_deal(deal, db: Session, user_id, user_role):
     try:
         created_deal = Deal(
-            account_id=deal.get("account_id"),
-            account_name=deal.get("account_name"),
-            deal_type=deal.get("deal_type"),
-            loan_type=deal.get("loan_type"),
-            type_of_login=deal.get("type_of_login"),
-            type_of_case_login=deal.get("type_of_case_login"),
-            ticket_login=deal.get("ticket_login"),
-            case_stage=deal.get("case_stage"),
-            case_status=deal.get("case_status"),
-            amount_required=deal.get("amount_required"),
-            mm_charges=deal.get("mm_charges"),
-            lender_name=deal.get("lender_name"),
-            lender_code=deal.get("lender_code"),
-            deal_call_back_datetime=deal.get("deal_call_back_datetime"),
-            customer_rejection_reason=deal.get("customer_rejection_reason"),
-            customer_rejection_status_explanation=deal.get("customer_rejection_status_explanation"),
+            account_id=deal.account_id,
+            account_name=deal.account_name,
+            deal_type=deal.deal_type,
+            loan_type=deal.loan_type,
+            type_of_login=deal.type_of_login,
+            type_of_case_login=deal.type_of_case_login,
+            ticket_login=deal.ticket_login,
+            case_stage=deal.case_stage,
+            case_status=deal.case_status,
+            amount_required=deal.amount_required,
+            mm_charges=deal.mm_charges,
+            lender_name=deal.lender_name,
+            lender_code=deal.lender_code,
+            deal_call_back_datetime=deal.deal_call_back_datetime,
+            customer_rejection_reason=deal.customer_rejection_reason,
+            customer_rejection_status_explanation=deal.customer_rejection_status_explanation,
             deal_owner_id=user_id,
             created_by=user_id,
             modified_by=user_id,
@@ -216,12 +217,14 @@ def create_deal(deal, db: Session, user_id, user_role):
         db.add(created_deal)
         db.commit()
         db.refresh(created_deal)
-        log_action(db, user_id, user_role, "CREATED", "DEAL", created_deal.id, deal)
+        safe_payload = jsonable_encoder(deal)
+        
+        log_action(db, user_id, user_role, "CREATED", "DEAL", created_deal.id, safe_payload)
+        
         return created_deal
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error"})
-
+        raise HTTPException(status_code=500, detail={"message": str(e)})
 
 def update_deal_based_on_id(user_id, user_role, db: Session, deal_id: int, payload):
     db_deal = db.query(Deal).filter(Deal.id == deal_id).first()
