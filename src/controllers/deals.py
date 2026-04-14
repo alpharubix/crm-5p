@@ -219,7 +219,7 @@ def create_deal(deal, db: Session, user_id, user_role):
         db.refresh(created_deal)
         safe_payload = jsonable_encoder(deal)
         
-        log_action(db, user_id, user_role, "CREATED", "DEAL", created_deal.id, safe_payload)
+        log_action(db, user_id, user_role, "CREATED", "Deal", created_deal.id, safe_payload)
         
         return created_deal
     except Exception as e:
@@ -256,7 +256,7 @@ def update_deal_based_on_id(user_id, user_role, db: Session, deal_id: int, paylo
     try:
         db.commit()
         db.refresh(db_deal)
-        log_action(db, user_id, user_role, "UPDATED", "Deals", deal_id, payload)
+        log_action(db, user_id, user_role, "UPDATED", "Deal", deal_id, payload)
         return {"message": "update-success", "updated_deal_id": str(db_deal.id)}
     except Exception as e:
         db.rollback()
