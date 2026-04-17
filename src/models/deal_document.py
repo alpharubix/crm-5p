@@ -12,8 +12,8 @@ class DealDocument(Base):
 
     module = Column(String(100), nullable=True)
     description = Column(Text, nullable=True)
-    from_date = Column(String(20), nullable=True)
-    to_date = Column(String(20), nullable=True)
+    from_date = Column(DateTime(timezone=True), nullable=True)
+    to_date = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), nullable=True)
     link = Column(Text, nullable=True)
 
