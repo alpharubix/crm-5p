@@ -37,7 +37,7 @@ class Deal(Base):
     disbursed_amount = Column(Numeric(15, 2), nullable=True)
     sanction_amount = Column(Numeric(15, 2), nullable=True)
     approved_amount = Column(Numeric(15, 2), nullable=True)
-    amount_required = Column(Numeric(15, 2), nullable=True)
+    amount_required = Column(Numeric(15, 2), nullable=False, server_default="0")
     processing_fees = Column(Numeric(15, 2), nullable=True)
     mm_charges = Column(Numeric(15, 2), nullable=True)
     insurance_amount = Column(Numeric(15, 2), nullable=True)
@@ -57,6 +57,7 @@ class Deal(Base):
     # Lender
     lender_code = Column(String(100), nullable=True)
     lender_name = Column(String(150), nullable=True, index=True)
+    lender_login_type = Column(String(100), nullable=True)
 
     # Rejection
     customer_rejection_reason = Column(String(150), nullable=True)
