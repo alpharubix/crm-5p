@@ -7,10 +7,10 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session, selectinload
 
 from src.controllers.audit_log import log_action
-from src.models.deal import Deal
-from src.models.ticket import Ticket
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
+from src.models.deal import Deal
+from src.models.ticket import Ticket
 
 
 def get_deals(
@@ -24,11 +24,16 @@ def get_deals(
     deal_status: str | None = None,
     loan_type: str | None = None,
     deal_owner_id: int | None = None,
+    lender_name: str | None = None,
+    ticket_login: str | None = None,
+    type_of_case_login: str | None = None,
     kanban: bool = False,
     created_from: str | None = None,
     created_to: str | None = None,
 ):
-    from src.models.ticket import Ticket  # Explicit import to prevent relationship lookup failure
+    from src.models.ticket import (
+        Ticket,  # Explicit import to prevent relationship lookup failure
+    )
 
     MANAGER_EXECUTIVES_MAP = MANAGERID.MANAGER_EXECUTIVES_MAP
     page = page or 1
@@ -55,6 +60,12 @@ def get_deals(
         filters.append(Deal.loan_type.ilike(f"%{loan_type.strip()}%"))
     if deal_owner_id:
         filters.append(Deal.deal_owner_id == deal_owner_id)
+    if lender_name:
+        filters.append(Deal.lender_name.ilike(f"%{lender_name.strip()}%"))
+    if ticket_login:
+        filters.append(Deal.ticket_login.ilike(f"%{ticket_login.strip()}%"))
+    if type_of_case_login:
+        filters.append(Deal.type_of_case_login.ilike(f"%{type_of_case_login.strip()}%"))
 
     if kanban:
         date_from = (
@@ -64,6 +75,8 @@ def get_deals(
         )
         date_to = (
             datetime.strptime(created_to, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            + timedelta(days=1)
+            - timedelta(seconds=1)
             if created_to
             else datetime.now(timezone.utc)
         )
@@ -71,55 +84,58 @@ def get_deals(
         filters.append(Deal.created_at <= date_to)
 
         base_query = db.query(Deal).filter(and_(*filters))
-        deals = (
-            base_query
-            .with_entities(
-                Deal.id,
-                Deal.account_name,
-                Deal.lender_name,
-                Deal.deal_status,
-                Deal.loan_type,
-                Deal.deal_owner_id,
-            )
-            .all()
-        )
+        deals = base_query.with_entities(
+            Deal.id,
+            Deal.account_name,
+            Deal.lender_name,
+            Deal.deal_status,
+            Deal.loan_type,
+            Deal.deal_owner_id,
+        ).all()
         grouped: dict = {}
         for deal in deals:
             status = deal.deal_status or "No Status"
-            grouped.setdefault(status, []).append({
-                **deal._asdict(),
-                "id": str(deal.id),
-                "deal_owner_id": str(deal.deal_owner_id) if deal.deal_owner_id else None,
-            })
+            grouped.setdefault(status, []).append(
+                {
+                    **deal._asdict(),
+                    "id": str(deal.id),
+                    "deal_owner_id": str(deal.deal_owner_id)
+                    if deal.deal_owner_id
+                    else None,
+                }
+            )
 
         return {"data": grouped, "page_info": None}
 
     base_query = db.query(Deal).filter(and_(*filters))
 
     if deal_id:
-        deals = (
-            base_query
-            .options(selectinload(Deal.owner))
-            .limit(1)
-            .all()
-        )
+        deals = base_query.options(selectinload(Deal.owner)).limit(1).all()
         if deals:
             deal = deals[0]
 
             ids_list = [str(deal.id)]
             if getattr(deal, "crm_deal_id", None):
                 ids_list.append(str(deal.crm_deal_id))
-            
+
             # explicitly query tickets based on Deal ID to bypass relationship mapping issues
             tickets_records = db.query(Ticket).filter(Ticket.deal_id == deal.id).all()
-            
+
             serialized_tickets = []
             for ticket in tickets_records:
                 ids_list.append(str(ticket.id))
-                t_dict = {c.name: getattr(ticket, c.name) for c in ticket.__table__.columns}
-                
+                t_dict = {
+                    c.name: getattr(ticket, c.name) for c in ticket.__table__.columns
+                }
+
                 # Stringify IDs to match schema
-                for key in ("id", "deal_id", "created_by", "modified_by", "partner_code"):
+                for key in (
+                    "id",
+                    "deal_id",
+                    "created_by",
+                    "modified_by",
+                    "partner_code",
+                ):
                     if t_dict.get(key) is not None:
                         t_dict[key] = str(t_dict[key])
                 serialized_tickets.append(t_dict)
@@ -128,7 +144,7 @@ def get_deals(
             notes = get_notes(
                 id_list=ids_list,
                 notes_collection=mongodb_conn["Notes"],
-                module_name=["Deals", "Tickets"]
+                module_name=["Deals", "Tickets"],
             )
 
             # Manually construct the final Deal dictionary to ensure injection works
@@ -138,16 +154,16 @@ def get_deals(
                 deal_dict["deal_owner_id"] = str(deal.deal_owner_id)
             if deal.account_id:
                 deal_dict["account_id"] = str(deal.account_id)
-                
+
             deal_dict["payment_receipt"] = None
             deal_dict["notes"] = notes
-            deal_dict["tickets"] = serialized_tickets  # Array of fully serialized tickets
+            deal_dict["tickets"] = serialized_tickets
 
             if getattr(deal, "owner", None):
                 deal_dict["owner"] = {
                     "id": str(deal.owner.id),
                     "full_name": getattr(deal.owner, "full_name", ""),
-                    "email": getattr(deal.owner, "email", "")
+                    "email": getattr(deal.owner, "email", ""),
                 }
 
             return {
@@ -159,11 +175,10 @@ def get_deals(
             "data": [],
             "page_info": {"page": 1, "total_pages": 0, "data_size": 0},
         }
-    
+
     total_records = base_query.count()
     deals = (
-        base_query
-        .with_entities(
+        base_query.with_entities(
             Deal.id,
             Deal.account_name,
             Deal.lender_name,
@@ -187,7 +202,11 @@ def get_deals(
             }
             for d in deals
         ],
-        "page_info": {"page": page, "total_pages": total_pages, "data_size": total_records},
+        "page_info": {
+            "page": page,
+            "total_pages": total_pages,
+            "data_size": total_records,
+        },
     }
 
 
@@ -218,13 +237,16 @@ def create_deal(deal, db: Session, user_id, user_role):
         db.commit()
         db.refresh(created_deal)
         safe_payload = jsonable_encoder(deal)
-        
-        log_action(db, user_id, user_role, "CREATED", "Deal", created_deal.id, safe_payload)
-        
+
+        log_action(
+            db, user_id, user_role, "CREATED", "Deal", created_deal.id, safe_payload
+        )
+
         return created_deal
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail={"message": str(e)})
+
 
 def update_deal_based_on_id(user_id, user_role, db: Session, deal_id: int, payload):
     db_deal = db.query(Deal).filter(Deal.id == deal_id).first()

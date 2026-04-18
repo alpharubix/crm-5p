@@ -20,10 +20,13 @@ def get_deals_list(
     account_name: str | None = None,
     loan_type: str | None = None,
     deal_owner_id: int | None = None,
-    deal_status: str | None = None,
+    case_status: str | None = None,
     kanban: bool = False,
     created_from: str | None = None,
     created_to: str | None = None,
+    lender_name: str | None = None,        # add
+    ticket_login: str | None = None,        # add
+    type_of_case_login: str | None = None,  # add
 ):
     return get_deals(
         page=page,
@@ -33,12 +36,15 @@ def get_deals_list(
         user_role=request.state.role,
         deal_id=deal_id,
         account_name=account_name,
-        deal_status=deal_status,
+        deal_status=case_status,
         loan_type=loan_type,
         deal_owner_id=deal_owner_id,
         kanban=kanban,
         created_from=created_from,
         created_to=created_to,
+        lender_name=lender_name,            # add
+        ticket_login=ticket_login,          # add
+        type_of_case_login=type_of_case_login,  # add
     )
 
 @deals_router.post("/", response_model=DealSchema)
