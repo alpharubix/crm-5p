@@ -33,7 +33,7 @@ def get_deals_list(
         user_role=request.state.role,
         deal_id=deal_id,
         account_name=account_name,
-        case_status=deal_status,
+        deal_status=deal_status,
         loan_type=loan_type,
         deal_owner_id=deal_owner_id,
         kanban=kanban,
