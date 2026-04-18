@@ -21,7 +21,7 @@ def get_deals(
     user_role: str,
     deal_id: int | None = None,
     account_name: str | None = None,
-    case_status: str | None = None,
+    deal_status: str | None = None,
     loan_type: str | None = None,
     deal_owner_id: int | None = None,
     kanban: bool = False,
@@ -49,8 +49,8 @@ def get_deals(
         filters.append(Deal.id == deal_id)
     if account_name:
         filters.append(Deal.account_name.ilike(f"%{account_name.strip()}%"))
-    if case_status:
-        filters.append(Deal.case_status.ilike(f"%{case_status.strip()}%"))
+    if deal_status:
+        filters.append(Deal.deal_status.ilike(f"%{deal_status.strip()}%"))
     if loan_type:
         filters.append(Deal.loan_type.ilike(f"%{loan_type.strip()}%"))
     if deal_owner_id:
@@ -77,7 +77,7 @@ def get_deals(
                 Deal.id,
                 Deal.account_name,
                 Deal.lender_name,
-                Deal.case_status,
+                Deal.deal_status,
                 Deal.loan_type,
                 Deal.deal_owner_id,
             )
@@ -85,7 +85,7 @@ def get_deals(
         )
         grouped: dict = {}
         for deal in deals:
-            status = deal.case_status or "No Status"
+            status = deal.deal_status or "No Status"
             grouped.setdefault(status, []).append({
                 **deal._asdict(),
                 "id": str(deal.id),
@@ -167,7 +167,7 @@ def get_deals(
             Deal.id,
             Deal.account_name,
             Deal.lender_name,
-            Deal.case_status,
+            Deal.deal_status,
             Deal.loan_type,
             Deal.ticket_login,
             Deal.deal_owner_id,
@@ -201,8 +201,8 @@ def create_deal(deal, db: Session, user_id, user_role):
             type_of_login=deal.type_of_login,
             type_of_case_login=deal.type_of_case_login,
             ticket_login=deal.ticket_login,
-            case_stage=deal.case_stage,
-            case_status=deal.case_status,
+            deal_stage=deal.deal_stage,
+            deal_status=deal.deal_status,
             amount_required=deal.amount_required,
             mm_charges=deal.mm_charges,
             lender_name=deal.lender_name,

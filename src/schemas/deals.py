@@ -132,8 +132,8 @@ class DealCreationBody(BaseModel):
     type_of_login: Optional[str] = None
     type_of_case_login: Optional[str] = None
     ticket_login: Optional[str] = None
-    case_stage: Optional[str] = None
-    case_status: Optional[str] = None
+    deal_stage: Optional[str] = None
+    deal_status: Optional[str] = None
 
     # Amounts
     disbursed_amount: Optional[Decimal] = None
