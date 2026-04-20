@@ -28,6 +28,10 @@ def get_deals(
     ticket_login: str | None = None,
     type_of_case_login: str | None = None,
     kanban: bool = False,
+    expected_closing_from: str | None = None,
+    expected_closing_to: str | None = None,
+    status_closing_from: str | None = None,
+    status_closing_to: str | None = None,
     created_from: str | None = None,
     created_to: str | None = None,
 ):
@@ -66,6 +70,17 @@ def get_deals(
         filters.append(Deal.ticket_login.ilike(f"%{ticket_login.strip()}%"))
     if type_of_case_login:
         filters.append(Deal.type_of_case_login.ilike(f"%{type_of_case_login.strip()}%"))
+        # Filter for Expected Closing Date Range
+    if expected_closing_from:
+                filters.append(Deal.deal_expected_closing >= expected_closing_from)
+    if expected_closing_to:
+                filters.append(Deal.deal_expected_closing <= expected_closing_to)
+        
+            # Filter for Status Closing Date Range
+    if status_closing_from:
+                filters.append(Deal.deal_status_closing >= status_closing_from)
+    if status_closing_to:
+                filters.append(Deal.deal_status_closing <= status_closing_to)
 
     if kanban:
         date_from = (
@@ -91,6 +106,8 @@ def get_deals(
             Deal.deal_status,
             Deal.loan_type,
             Deal.deal_owner_id,
+            Deal.deal_expected_closing,
+            Deal.deal_status_closing,
         ).all()
         grouped: dict = {}
         for deal in deals:
@@ -235,6 +252,8 @@ def create_deal(deal, db: Session, user_id, user_role):
             deal_owner_id=user_id,
             created_by=user_id,
             modified_by=user_id,
+            deal_expected_closing=deal.deal_expected_closing,
+            deal_status_closing=deal.deal_status_closing,
         )
         db.add(created_deal)
         db.commit()
@@ -260,7 +279,7 @@ def update_deal_based_on_id(user_id, user_role, db: Session, deal_id: int, paylo
         if hasattr(db_deal, key):
             if value == "" or value is None:
                 setattr(db_deal, key, None)
-            elif "datetime" in key or "date" in key:
+            elif "datetime" in key or "date" in key or "closing" in key:
                 if isinstance(value, str):
                     try:
                         parsed = datetime.fromisoformat(value)

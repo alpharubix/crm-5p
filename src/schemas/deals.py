@@ -63,6 +63,9 @@ class DealSchema(BaseModel):
     assignee_id: str | None = None
     created_by: str | None = None
     modified_by: str | None = None
+    
+    deal_expected_closing: date | None = None
+    deal_status_closing: date | None = None
 
     # Account
     account_name: str | None = None
@@ -134,7 +137,10 @@ class DealCreationBody(BaseModel):
     ticket_login: Optional[str] = None
     deal_stage: Optional[str] = None
     deal_status: Optional[str] = None
-
+    
+    deal_expected_closing: Optional[date] = None
+    deal_status_closing: Optional[date] = None
+        
     # Amounts
     disbursed_amount: Optional[Decimal] = None
     sanction_amount: Optional[Decimal] = None
