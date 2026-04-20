@@ -36,12 +36,13 @@ def get_documents(deal_id: int, db: Session = Depends(get_db)):
 @deal_docs_router.post("/")
 async def create_document(deal_id: int, request: Request, db: Session = Depends(get_db)):
     body = await request.json()
+    sanitized_body = {k: (v if v != "" else None) for k, v in body.items()}
     doc = DealDocument(
         deal_id=deal_id,
         module=body.get("module"),
         description=body.get("description"),
-        from_date=body.get("from_date"),
-        to_date=body.get("to_date"),
+        from_date=sanitized_body.get("from_date"),
+        to_date=sanitized_body.get("to_date"),
         status=body.get("status"),
         link=body.get("link"),
         created_by=request.state.user_id,

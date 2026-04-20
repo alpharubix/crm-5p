@@ -21,8 +21,8 @@ class DealSchema(BaseModel):
     type_of_login: str | None = None
     type_of_case_login: str | None = None
     ticket_login: str | None = None
-    case_stage: str | None = None
-    case_status: str | None = None
+    deal_stage: str | None = None
+    deal_status: str | None = None
 
     # Amounts
     disbursed_amount: Decimal | None = None
