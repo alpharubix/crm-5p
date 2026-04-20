@@ -150,6 +150,8 @@ def get_deals(
             # Manually construct the final Deal dictionary to ensure injection works
             deal_dict = {c.name: getattr(deal, c.name) for c in deal.__table__.columns}
             deal_dict["id"] = str(deal.id)
+            # deal_dict["deal_status"] = getattr(deal, "deal_status", None)
+            # deal_dict["deal_stage"] = getattr(deal, "deal_stage", None)
             if deal.deal_owner_id:
                 deal_dict["deal_owner_id"] = str(deal.deal_owner_id)
             if deal.account_id:
@@ -183,6 +185,7 @@ def get_deals(
             Deal.account_name,
             Deal.lender_name,
             Deal.deal_status,
+            Deal.deal_stage,
             Deal.loan_type,
             Deal.ticket_login,
             Deal.deal_owner_id,
