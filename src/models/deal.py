@@ -71,6 +71,8 @@ class Deal(Base):
     sanction_letter = Column(String, nullable=True)
     potential = Column(String(100), nullable=True)
     product = Column(String(100), nullable=True)
+    deal_expected_closing = Column(Date, nullable=True)
+    deal_status_closing = Column(Date, nullable=True)
 
     # Audit
     assignee_id = Column(BIGINT, nullable=True)
