@@ -25,6 +25,7 @@ def get_deals(
     loan_type: str | None = None,
     deal_owner_id: int | None = None,
     lender_name: str | None = None,
+    lender_login_type: str | None = None,
     ticket_login: str | None = None,
     type_of_case_login: str | None = None,
     kanban: bool = False,
@@ -66,21 +67,23 @@ def get_deals(
         filters.append(Deal.deal_owner_id == deal_owner_id)
     if lender_name:
         filters.append(Deal.lender_name.ilike(f"%{lender_name.strip()}%"))
+    if lender_login_type:
+        filters.append(Deal.lender_login_type.ilike(f"%{lender_login_type.strip()}%"))
     if ticket_login:
         filters.append(Deal.ticket_login.ilike(f"%{ticket_login.strip()}%"))
     if type_of_case_login:
         filters.append(Deal.type_of_case_login.ilike(f"%{type_of_case_login.strip()}%"))
         # Filter for Expected Closing Date Range
     if expected_closing_from:
-                filters.append(Deal.deal_expected_closing >= expected_closing_from)
+        filters.append(Deal.deal_expected_closing >= expected_closing_from)
     if expected_closing_to:
-                filters.append(Deal.deal_expected_closing <= expected_closing_to)
-        
-            # Filter for Status Closing Date Range
+        filters.append(Deal.deal_expected_closing <= expected_closing_to)
+
+    # Filter for Status Closing Date Range
     if status_closing_from:
-                filters.append(Deal.deal_status_closing >= status_closing_from)
+        filters.append(Deal.deal_status_closing >= status_closing_from)
     if status_closing_to:
-                filters.append(Deal.deal_status_closing <= status_closing_to)
+        filters.append(Deal.deal_status_closing <= status_closing_to)
 
     if kanban:
         date_from = (
@@ -108,6 +111,9 @@ def get_deals(
             Deal.deal_owner_id,
             Deal.deal_expected_closing,
             Deal.deal_status_closing,
+            Deal.lender_login_type,
+            Deal.deal_status_closing,
+            Deal.partner_code,
         ).all()
         grouped: dict = {}
         for deal in deals:
@@ -206,6 +212,10 @@ def get_deals(
             Deal.loan_type,
             Deal.ticket_login,
             Deal.deal_owner_id,
+            Deal.lender_login_type,
+            Deal.partner_code,
+            Deal.deal_expected_closing,
+            Deal.deal_status_closing,
         )
         .offset(offset)
         .limit(limit)
@@ -245,6 +255,7 @@ def create_deal(deal, db: Session, user_id, user_role):
             amount_required=deal.amount_required,
             mm_charges=deal.mm_charges,
             lender_name=deal.lender_name,
+            lender_login_type=deal.lender_login_type,
             lender_code=deal.lender_code,
             deal_call_back_datetime=deal.deal_call_back_datetime,
             customer_rejection_reason=deal.customer_rejection_reason,

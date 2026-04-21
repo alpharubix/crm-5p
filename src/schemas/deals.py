@@ -1,9 +1,20 @@
-from pydantic import BaseModel, field_serializer, Field, ConfigDict, field_validator,model_validator
-from typing import Optional, Any, List
-from datetime import datetime, timezone, timedelta, date
-from src.schemas.user import UserResponseAccount
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any, List, Optional
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
+
+from src.schemas.user import UserResponseAccount
+
 IST = timezone(timedelta(hours=5, minutes=30))
+
 
 class DealSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -36,6 +47,9 @@ class DealSchema(BaseModel):
     rate_of_interest: Decimal | None = None
     interest_type: str | None = None
 
+    lender_login_type: str | None = None
+    partner_code: str | None = None
+
     # Dates
     deal_call_back_datetime: datetime | None = None
     disbursement_date: date | None = None
@@ -63,7 +77,7 @@ class DealSchema(BaseModel):
     assignee_id: str | None = None
     created_by: str | None = None
     modified_by: str | None = None
-    
+
     deal_expected_closing: date | None = None
     deal_status_closing: date | None = None
 
@@ -79,19 +93,18 @@ class DealSchema(BaseModel):
     crm_deal_id: str | None = None
     owner: UserResponseAccount | None = None  # optional now — safe for both paths
     notes: Any | None = None
-    
+
     tickets: list[dict] | None = None
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def extract_tickets_list(cls, value):
-        if hasattr(value, '_tickets_list'):
+        if hasattr(value, "_tickets_list"):
             data = {
-                c.name: getattr(value, c.name, None)
-                for c in value.__table__.columns
+                c.name: getattr(value, c.name, None) for c in value.__table__.columns
             }
-            data['tickets'] = value._tickets_list
-            for attr in ('owner', 'notes'):
+            data["tickets"] = value._tickets_list
+            for attr in ("owner", "notes"):
                 if hasattr(value, attr):
                     data[attr] = getattr(value, attr)
             return data
@@ -100,28 +113,37 @@ class DealSchema(BaseModel):
     @field_serializer("deal_call_back_datetime", "created_at", "updated_at")
     def serialize_datetime(self, value):
         if value:
-            dt = datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc).astimezone(IST)
+            dt = (
+                datetime.fromisoformat(str(value))
+                .replace(tzinfo=timezone.utc)
+                .astimezone(IST)
+            )
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         return None
+
     @field_validator(
-        "id", "account_id", "ticket_id", "ticket_number",
-        "assignee_id", "created_by", "modified_by",
-        "deal_owner_id", "crm_deal_id",
-        mode="before"
+        "id",
+        "account_id",
+        "ticket_id",
+        "ticket_number",
+        "assignee_id",
+        "created_by",
+        "modified_by",
+        "deal_owner_id",
+        "crm_deal_id",
+        mode="before",
     )
     @classmethod
     def coerce_ids_to_str(cls, value):
         return str(value) if value is not None else None
 
 
-
-
 class DealListResponse(BaseModel):
     data: list[DealSchema] | dict | None = []
     page_info: dict[str, Any] | None = None
 
-class DealCreationBody(BaseModel):
 
+class DealCreationBody(BaseModel):
     # Primary Key
     id: Optional[int] = None
     # Relationship
@@ -137,10 +159,11 @@ class DealCreationBody(BaseModel):
     ticket_login: Optional[str] = None
     deal_stage: Optional[str] = None
     deal_status: Optional[str] = None
-    
+
     deal_expected_closing: Optional[date] = None
     deal_status_closing: Optional[date] = None
-        
+    lender_login_type: Optional[str] = None
+
     # Amounts
     disbursed_amount: Optional[Decimal] = None
     sanction_amount: Optional[Decimal] = None
