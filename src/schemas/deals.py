@@ -164,6 +164,7 @@ class DealCreationBody(BaseModel):
     deal_status_closing: Optional[date] = None
     lender_login_type: Optional[str] = None
 
+    partner_code: Optional[str] = None
     # Amounts
     disbursed_amount: Optional[Decimal] = None
     sanction_amount: Optional[Decimal] = None

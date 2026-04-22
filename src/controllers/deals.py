@@ -265,6 +265,7 @@ def create_deal(deal, db: Session, user_id, user_role):
             modified_by=user_id,
             deal_expected_closing=deal.deal_expected_closing,
             deal_status_closing=deal.deal_status_closing,
+            partner_code=deal.partner_code,
         )
         db.add(created_deal)
         db.commit()
