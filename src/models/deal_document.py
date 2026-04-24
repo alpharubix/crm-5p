@@ -5,10 +5,10 @@ from sqlalchemy.sql import func
 from ..database import Base
 
 class DealDocument(Base):
-    __tablename__ = "deal_documents"
+    __tablename__ = "deal_documents_5p"
 
     id = Column(BIGINT, primary_key=True, autoincrement=True, index=True)
-    deal_id = Column(BIGINT, ForeignKey("deals.id"), nullable=False, index=True)
+    deal_id = Column(BIGINT, ForeignKey("deals_5p.id"), nullable=False, index=True)
 
     module = Column(String(100), nullable=True)
     description = Column(Text, nullable=True)

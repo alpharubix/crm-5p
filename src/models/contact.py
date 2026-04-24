@@ -8,7 +8,7 @@ from ..database import Base
 
 
 class Contact(Base):
-    __tablename__ = "contacts"
+    __tablename__ = "contacts_5p"
 
     # Primary Key
     id = Column(BIGINT, primary_key=True, index=True,autoincrement=True)
@@ -16,7 +16,7 @@ class Contact(Base):
     # Relationship to Account (The Fix)
     # account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
     # Foreign Key (Links to Account Table)
-    account_id = Column(BIGINT, ForeignKey("accounts.id"), index=True)
+    account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), index=True)
     owner_id = Column(BIGINT, ForeignKey("users.id"), index=True)
     # Relationship (Links to Account Object)
     # Identity

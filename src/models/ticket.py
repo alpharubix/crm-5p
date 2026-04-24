@@ -4,11 +4,11 @@ from sqlalchemy.orm import relationship
 from ..database import Base
 
 class Ticket(Base):
-    __tablename__ = "tickets"
+    __tablename__ = "tickets_5p"
     
     # Primary Key & Relationships
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    deal_id = Column(BigInteger, ForeignKey("deals.id"), nullable=False)
+    deal_id = Column(BigInteger, ForeignKey("deals_5p.id"), nullable=False)
     deal = relationship("Deal", back_populates="tickets")
 
     # Ticket Information

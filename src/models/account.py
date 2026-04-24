@@ -6,7 +6,7 @@ from ..database import Base
 
 
 class Account(Base):
-    __tablename__ = "accounts"
+    __tablename__ = "accounts_5p"
 
     # Primary Key
     id = Column(BIGINT, primary_key=True,autoincrement=True)
@@ -73,7 +73,7 @@ class AccountStatusHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     # which account status changed
-    account_id = Column(BIGINT, ForeignKey("accounts.id"), nullable=False, index=True)
+    account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), nullable=False, index=True)
 
     # previous status
     old_status = Column(String, nullable=True)

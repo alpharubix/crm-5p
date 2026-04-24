@@ -6,13 +6,13 @@ from sqlalchemy.sql import func
 from ..database import Base
 
 class Deal(Base):
-    __tablename__ = "deals"
+    __tablename__ = "deals_5p"
 
     # Primary Key
     id = Column(BIGINT, primary_key=True, autoincrement=True, index=True)
 
     # Foreign Keys
-    account_id = Column(BIGINT, ForeignKey("accounts.id"), index=True)
+    account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), index=True)
     deal_owner_id = Column(BIGINT, ForeignKey("users.id"), index=True)
 
     # Relationships
