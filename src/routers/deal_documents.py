@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 deal_docs_router = APIRouter(prefix="/deals/{deal_id}/documents", tags=["deal-documents"])
 
+now_utc = datetime.now(timezone.utc)
 
 def format_doc(d: DealDocument) -> dict:
     return {
@@ -47,6 +48,8 @@ async def create_document(deal_id: int, request: Request, db: Session = Depends(
         link=body.get("link"),
         created_by=request.state.user_id,
         modified_by=request.state.user_id,
+        created_at=now_utc,
+        updated_at=now_utc,
     )
     db.add(doc)
     db.commit()
