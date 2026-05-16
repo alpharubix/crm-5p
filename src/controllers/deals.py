@@ -3,9 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, selectinload
-
 from src.controllers.audit_log import log_action
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
@@ -98,8 +97,12 @@ def get_deals(
             if created_to
             else datetime.now(timezone.utc)
         )
-        filters.append(Deal.created_at >= date_from)
-        filters.append(Deal.created_at <= date_to)
+        filters.append(
+            or_(
+                and_(Deal.created_at >= date_from, Deal.created_at <= date_to),
+                Deal.created_at == None
+            )
+        )
 
         base_query = db.query(Deal).filter(and_(*filters))
         deals = base_query.with_entities(
@@ -165,10 +168,10 @@ def get_deals(
 
             # fetch notes matching either Deal or Tickets modules
             notes = get_notes(
-                id_list=ids_list,
-                notes_collection=mongodb_conn["Notes"],
-                module_name=["Deals", "Tickets"],
-            )
+                    id_list=ids_list,
+                    notes_collection=mongodb_conn["Notes"],
+                    module_name=["Deals_5pc", "Tickets_5pc"],
+                )
 
             # Manually construct the final Deal dictionary to ensure injection works
             deal_dict = {c.name: getattr(deal, c.name) for c in deal.__table__.columns}
@@ -240,8 +243,13 @@ def get_deals(
     }
 
 
+from datetime import datetime, timezone  # Ensure timezone is imported
+
 def create_deal(deal, db: Session, user_id, user_role):
     try:
+        # Capture a rock-solid, identical time anchor right now
+        now_utc = datetime.now(timezone.utc)
+
         created_deal = Deal(
             account_id=deal.account_id,
             account_name=deal.account_name,
@@ -266,6 +274,9 @@ def create_deal(deal, db: Session, user_id, user_role):
             deal_expected_closing=deal.deal_expected_closing,
             deal_status_closing=deal.deal_status_closing,
             partner_code=deal.partner_code,
+            
+            created_at=now_utc,
+            updated_at=now_utc
         )
         db.add(created_deal)
         db.commit()

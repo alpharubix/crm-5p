@@ -1,5 +1,5 @@
 import re
-from typing import Any
+from typing import Any, List, Dict
 
 from fastapi.exceptions import HTTPException
 from pymongo.synchronous.collection import Collection
@@ -12,8 +12,7 @@ from src.models.contact import Contact
 from src.models.deal import Deal
 from src.models.ticket import Ticket
 from .audit_log import log_action
-from datetime import timezone
-from datetime import datetime
+from datetime import datetime, timezone,  timedelta
 from zoneinfo import ZoneInfo
 from src.controllers import auth,mail
 from src.controllers.Background_threads import BackgroundThreadPool
@@ -26,30 +25,40 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         Owner = user_coll.find_one(
             {"id": str(user_id)}, {"_id": 0, "id": 1, "first_name": 1, "email": 1}
         )
-        if module_name == 'Accounts':
-            raw_parent_acc = pg_db.query(Account.id,Account.account_name).filter(Account.id == int(parent_id)).first()
+        
+        # FIXED: Explicitly handle both standard modules and 5pc module extensions
+        if module_name in ['Accounts', 'Accounts_5pc']:
+            raw_parent_acc = pg_db.query(Account.id, Account.account_name).filter(Account.id == int(parent_id)).first()
             Parent_Id = {
                 "id": str(raw_parent_acc.id),
                 "account_name": raw_parent_acc.account_name,
             }
-        elif module_name == 'Contacts':
-            raw_parent_con = pg_db.query(Contact.id,Contact.last_name).filter(Contact.id == int(parent_id)).first()
+        elif module_name in ['Contacts', 'Contacts_5pc']:
+            raw_parent_con = pg_db.query(Contact.id, Contact.last_name).filter(Contact.id == int(parent_id)).first()
             Parent_Id = {
                 "id": str(raw_parent_con.id),
                 "contact_name": raw_parent_con.last_name,
             }
-        elif module_name == 'Tickets':
+        elif module_name in ['Tickets', 'Tickets_5pc']:
             raw_parent_ticket = pg_db.query(Ticket.id, Deal.account_name).join(Deal, Ticket.deal_id == Deal.id).filter(Ticket.id == int(parent_id)).first()
             Parent_Id = {
                 "id": str(raw_parent_ticket.id),
-                "ticket_name": raw_parent_ticket.account_name, # Storing account name for visual reference, or you can change this
+                "ticket_name": raw_parent_ticket.account_name,
             }
-        else:
-            raw_parent_deal = pg_db.query(Deal.id,Deal.account_name).filter(Deal.id == int(parent_id)).first()
+        elif module_name in ['Deals', 'Deals_5pc']:
+            raw_parent_deal = pg_db.query(Deal.id, Deal.account_name).filter(Deal.id == int(parent_id)).first()
             Parent_Id = {
                 "id": str(raw_parent_deal.id),
                 "deal_name": raw_parent_deal.account_name,
             }
+        else:
+            # Fallback if an unexpected string reaches the endpoint
+            raw_parent_deal = pg_db.query(Deal.id, Deal.account_name).filter(Deal.id == int(parent_id)).first()
+            Parent_Id = {
+                "id": str(raw_parent_deal.id),
+                "deal_name": raw_parent_deal.account_name if raw_parent_deal else "Unknown Entity",
+            }
+            
         Modified_By = None
         Created_By = user_coll.find_one(
             {"id": str(user_id)}, {"_id": 0, "id": 1, "first_name": 1, "email": 1}
@@ -63,11 +72,11 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             "Modified_By": Modified_By,
             "Note_Content": note,
             "Parent_Id": Parent_Id,
-            "module":module_name,
+            "module": module_name, # Preserves the original variant token string ('Accounts_5pc' etc)
             "Created_Time": datetime.now(timezone.utc).isoformat(),
             "Modified_Time": datetime.now(timezone.utc).isoformat(),
         })
-        print("Insertion result",result)
+        print("Insertion result", result)
 
         log_action(
             pg_db,
@@ -78,7 +87,7 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             int(parent_id),
             {"note": note, "parent_id": parent_id},
         )
-        #create a background worker to send mention emails in a separate eventloop
+        
         BackgroundThreadPool.execute_task(
             mentions,
             note,
@@ -93,22 +102,35 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         print(e)
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-
-def get_notes(id_list:Any,notes_collection: Collection, module_name: str | list[str] = None):
+def get_notes(
+    notes_collection: Collection, 
+    pair_filters: List[Dict[str, str]] = None, 
+    id_list: Any = None, 
+    module_name: str | list[str] = None
+):
     try:
-        filter_query = (
-            {"Parent_Id.id": {"$in": id_list}}
-            if isinstance(id_list, list)
-            else {"Parent_Id.id": id_list}
-        )
-        # Add module filtering to prevent ID overlap issues
-        if module_name:
-            if isinstance(module_name, list):
-                filter_query["module"] = {"$in": module_name}
-            else:
-                filter_query["module"] = module_name
+        filter_query = {}
+
+        # 1. Handle the NEW paired filters (from the code I gave you)
+        if pair_filters:
+            filter_query = {"$or": pair_filters}
         
+        # 2. Handle the OLD style (to fix the Internal Server Error in Deals/Contacts)
+        elif id_list:
+            filter_query = (
+                {"Parent_Id.id": {"$in": id_list}}
+                if isinstance(id_list, list)
+                else {"Parent_Id.id": id_list}
+            )
+            if module_name:
+                if isinstance(module_name, list):
+                    filter_query["module"] = {"$in": module_name}
+                else:
+                    filter_query["module"] = module_name
         
+        else:
+            return []
+
         projection = {
             "_id": 0,
             "Owner": 1,
@@ -120,26 +142,33 @@ def get_notes(id_list:Any,notes_collection: Collection, module_name: str | list[
             "Modified_Time": 1,
             "module": 1,
         }
+
         notes_cursor = notes_collection.find(filter_query, projection)
         notes = []
         for note in notes_cursor:
-            if note.get("Created_Time"):
-                created = datetime.fromisoformat(note["Created_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
-                note["Created_Time"] = created.strftime("%d %b %Y, %I:%M %p")
-
-            if note.get("Modified_Time"):
-                modified = datetime.fromisoformat(note["Modified_Time"]).replace(tzinfo=timezone.utc).astimezone(IST)
-                note["Modified_Time"] = modified.strftime("%d %b %Y, %I:%M %p")
-            note["Note_Content"] = map_user_name_with_id(note["Note_Content"])
-            notes.append(note)
+                    # FIXED: Exactly how R1X processes time offsets
+                    for time_key in ["Created_Time", "Modified_Time"]:
+                        if note.get(time_key):
+                            val = note[time_key]
+                            try:
+                                # 1. Parse string to naive datetime object, clearing decimal subseconds/Z modifiers
+                                clean_time_str = val.split(".")[0].replace("Z", "")
+                                dt_utc = datetime.fromisoformat(clean_time_str)
+                                
+                                # 2. Shift the naive UTC date to local IST (+5:30)
+                                dt_ist = dt_utc + timedelta(hours=5, minutes=30)
+                                
+                                # 3. Format into output string presentation style
+                                note[time_key] = dt_ist.strftime("%d %b %Y, %I:%M %p")
+                            except Exception as parse_err:
+                                print(f"Time Parsing Error for value '{val}': {parse_err}")
+                                pass
+                    notes.append(note)
         return notes
 
     except Exception as e:
-        print(e)
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "Internal server error"},
-        )
+        print(f"Notes Error: {e}")
+        return []
 
 def map_user_name_with_id(note_text:str)->str:
     pattern = r"zsu\[@user:(\d+)\]zsu|crm\[user#(\d+)#(\d+)\]crm|crm\[user#(\d+)\]crm"

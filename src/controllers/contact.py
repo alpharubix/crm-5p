@@ -5,13 +5,14 @@ from fastapi import HTTPException
 from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload, session, selectinload
+from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 from src.controllers.notes import get_notes
-from ..models.contact import Contact
-from ..schemas.contact import ContactBase
 from .audit_log import log_action
 from .auth import MANAGERID
+
+from ..models.contact import Contact
+from ..schemas.contact import ContactBase
 
 
 def create_contact(db: Session, data: ContactBase, user_id: int, user_role: str):
@@ -41,6 +42,7 @@ def create_contact(db: Session, data: ContactBase, user_id: int, user_role: str)
     db.commit()
     db.refresh(new_contact)
 
+    # FIXED: Kept string descriptor accurate for audit tracing logs
     log_action(
         db, user_id, user_role, "CREATED", "Contact", new_contact.id, data.model_dump(mode="json")
     )
@@ -51,7 +53,7 @@ def get_all_contacts(
     request,
     db: Session,
     mongodb_conn,
-    page: int=1,
+    page: int = 1,
     contact_id: int | None = None,
     phone: str = None,
     mobile: str = None,
@@ -60,7 +62,6 @@ def get_all_contacts(
     full_name: str = "",
 ):
     MANAGER_EXECUTIVES_MAP = MANAGERID().MANAGER_EXECUTIVES_MAP
-    print(page)
     limit = 30
     offset = (page - 1) * limit
     query = db.query(Contact)
@@ -69,7 +70,7 @@ def get_all_contacts(
     user_id = request.state.user_id
     role = request.state.role
     allowed_owner_ids = None
-    single_id_request = False  # <-- track whether this is a single-contact lookup
+    single_id_request = False 
 
     if role in ("super_admin", "admin"):
         pass
@@ -83,7 +84,7 @@ def get_all_contacts(
 
     if contact_id:
         filters.append(Contact.id == contact_id)
-        single_id_request = True  # <-- flag set here, same as accounts
+        single_id_request = True  
     if city and city.strip():
         filters.append(Contact.city.ilike(f"%{city.strip()}%"))
     if email and email.strip():
@@ -106,7 +107,6 @@ def get_all_contacts(
         )
 
     if single_id_request:
-        # --- Full load path: related models + notes ---
         base_query = query.filter(and_(*filters)) if filters else query
         total_data_size = base_query.count()
 
@@ -125,15 +125,15 @@ def get_all_contacts(
 
         if data:
             contact: Contact = data[0]
-            # Build ids_list from the contact itself (extend here if
-            # Contact gains related deals/accounts that also carry notes)
             ids_list = [str(contact.id)]
 
+            # KEEP: Explicit notes routing to module namespace 'Contacts_5pc'
             notes = get_notes(
                 id_list=ids_list,
                 notes_collection=mongodb_conn["Notes"],
+                module_name="Contacts_5pc"
             )
-            contact.notes = notes  # attach to the object, not the list
+            contact.notes = notes  
 
         total_pages = math.ceil(total_data_size / limit)
 
@@ -147,7 +147,6 @@ def get_all_contacts(
         }
 
     else:
-        # --- Lightweight path: column subset only, no eager loading ---
         data = (
             db.query(
                 Contact.id,
@@ -201,6 +200,5 @@ def update_contacts(request: Request, contact_id: int, body: dict, db: Session):
     except HTTPException as e:
         raise e
     except Exception as e:
-        print(e)
         db.rollback()
         raise HTTPException(status_code=500, detail={"msg": "Internal server error"})

@@ -5,7 +5,7 @@ from src.models.ticket import Ticket
 from src.database import get_mongodb
 from src.controllers.notes import get_notes
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import and_
+from sqlalchemy import and_,or_
 from sqlalchemy.orm import selectinload
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -47,6 +47,8 @@ def get_tickets_list(
     user_role = request.state.role
 
     allowed_owner_ids = None
+    if user_role in ["super_admin", "admin"]:
+        allowed_owner_ids = None
     if user_role == "manager":
         allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
     elif user_role == "executive":
@@ -67,13 +69,18 @@ def get_tickets_list(
             if created_from
             else datetime.now(timezone.utc) - timedelta(days=30)
         )
-        date_to = (
-            datetime.strptime(created_to, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            if created_to
-            else datetime.now(timezone.utc)
+        if created_to:
+            date_to = datetime.strptime(created_to, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
+            )
+        else:
+            date_to = datetime.now(timezone.utc)
+        filters.append(
+            or_(
+                and_(Ticket.created_at >= date_from, Ticket.created_at <= date_to),
+                Ticket.created_at == None
+            )
         )
-        filters.append(Ticket.created_at >= date_from)
-        filters.append(Ticket.created_at <= date_to)
 
         query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
 
@@ -132,11 +139,16 @@ async def create_ticket(request: Request, db: Session = Depends(get_db)):
     }
 
     filtered_body = {k: v for k, v in body.items() if k in allowed_fields}
-
+    now_utc = datetime.now(timezone.utc)
     user_id = request.state.user_id
     user_role = request.state.role
 
-    ticket = Ticket(**filtered_body, created_by=user_id)
+    ticket = Ticket(
+        **filtered_body, 
+        created_by=user_id,
+        created_at=now_utc,
+        updated_at=now_utc
+        )
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
@@ -189,7 +201,7 @@ def get_ticket(ticket_id: int, request: Request, db: Session = Depends(get_db), 
     result["notes"] = get_notes(
         id_list=[str(ticket_id)],
         notes_collection=mongodb_conn["Notes"],
-        module_name="Tickets"
+        module_name="Tickets_5pc"
     )
     return result
 
