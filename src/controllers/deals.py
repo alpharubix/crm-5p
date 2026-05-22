@@ -114,15 +114,11 @@ def get_deals(
             except ValueError:
                 pass
 
-# ------------------- KANBAN VIEW PROCESSOR -------------------
+        # ------------------- KANBAN VIEW PROCESSOR -------------------
         if kanban:
-            # 1. First, build the clean query based on the active filters
             base_query = db.query(Deal).filter(and_(*filters))
-            
-            # 2. Get the actual total count of ALL matching data in DB (e.g., 220)
             total_count = base_query.count()
 
-            # 3. Pull the specific entities, but CAP them at 200 items max
             deals = base_query.with_entities(
                 Deal.id,
                 Deal.account_name,
@@ -134,9 +130,8 @@ def get_deals(
                 Deal.deal_status_closing,
                 Deal.lender_login_type,
                 Deal.partner_code,
-            ).limit(200).all()  # <--- CHANGE IS HERE: Added .limit(200)
+            ).limit(200).all()
 
-            # 4. Group your dataset by stage status (Will process max 200 items)
             grouped: dict = {}
             for deal in deals:
                 status = deal.deal_status or "No Status"
@@ -148,14 +143,14 @@ def get_deals(
                     }
                 )
 
-            # 5. Return matching the exact structure from your tickets controller
             return {"data": grouped, "page_info": {"total": total_count}}
+
         # ------------------- STANDARD / DRILLDOWN VIEWS -------------------
         base_query = db.query(Deal).filter(and_(*filters))
 
         # Single Deal Detail View Scenario
         if deal_id:
-            deals = base_query.options(selectinload(Deal.owner), selectinload(Deal.revenue)).limit(1).all()
+            deals = base_query.options(selectinload(Deal.owner)).limit(1).all()
             if deals:
                 deal = deals[0]
                 ids_list = [str(deal.id)]
@@ -173,26 +168,10 @@ def get_deals(
                             t_dict[key] = str(t_dict[key])
                     serialized_tickets.append(t_dict)
 
-                serialized_revenue = []
-                if getattr(deal, "revenue", None):
-                    for revenue in deal.revenue:
-                        revenue_dict = {c.name: getattr(revenue, c.name) for c in revenue.__table__.columns}
-                        for key in ("id", "deal_id", "owner_id", "created_by", "updated_by"):
-                            if revenue_dict.get(key) is not None:
-                                revenue_dict[key] = str(revenue_dict[key])
-
-                        for key, val in revenue_dict.items():
-                            if isinstance(val, (date, datetime)):
-                                revenue_dict[key] = val.isoformat()
-                            if isinstance(val, float):
-                                revenue_dict[key] = str(val)
-
-                        serialized_revenue.append(revenue_dict)
-
                 notes = get_notes(
                     id_list=ids_list,
                     notes_collection=mongodb_conn["Notes"],
-                    module_name=["Deals", "Tickets"],
+                    module_name=["Deals_5pc", "Tickets_5pc"],
                 )
 
                 deal_dict = {c.name: getattr(deal, c.name) for c in deal.__table__.columns}
@@ -205,7 +184,6 @@ def get_deals(
                 deal_dict["payment_receipt"] = None
                 deal_dict["notes"] = notes
                 deal_dict["tickets"] = serialized_tickets
-                deal_dict["revenue"] = serialized_revenue
 
                 if getattr(deal, "owner", None):
                     deal_dict["owner"] = {
