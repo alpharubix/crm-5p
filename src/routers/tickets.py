@@ -40,6 +40,13 @@ def get_tickets_list(
     ticket_status: str | None = None,
     type_of_loan: str | None = None,
     account_name: str | None = None,
+    lender_login_from: str | None = None,
+    lender_login_to: str | None = None,
+    deal_owner_id: int | None = None,
+    targeted_disbursement_from: str | None = None,
+    targeted_disbursement_to: str | None = None,
+    disbursement_from: str | None = None,
+    disbursement_to: str | None = None,
 ):
 
     MANAGER_EXECUTIVES_MAP = MANAGERID.MANAGER_EXECUTIVES_MAP
@@ -47,8 +54,6 @@ def get_tickets_list(
     user_role = request.state.role
 
     allowed_owner_ids = None
-    if user_role in ["super_admin", "admin"]:
-        allowed_owner_ids = None
     if user_role == "manager":
         allowed_owner_ids = [user_id] + MANAGER_EXECUTIVES_MAP.get(user_id, [])
     elif user_role == "executive":
@@ -63,49 +68,62 @@ def get_tickets_list(
     if type_of_loan:
         filters.append(Ticket.type_of_loan.ilike(f"%{type_of_loan.strip()}%"))
 
+# ------------------- KANBAN VIEW PROCESSOR -------------------
     if kanban:
-        date_from = (
-            datetime.strptime(created_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            if created_from
-            else datetime.now(timezone.utc) - timedelta(days=30)
-        )
+        # 1. Clean up the date filters so they don't force a 30-day limit unless requested
+        if created_from:
+            try:
+                date_from = datetime.strptime(created_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                filters.append(Ticket.created_at >= date_from)
+            except ValueError:
+                pass
         if created_to:
-            date_to = datetime.strptime(created_to, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc
-            )
-        else:
-            date_to = datetime.now(timezone.utc)
-        filters.append(
-            or_(
-                and_(Ticket.created_at >= date_from, Ticket.created_at <= date_to),
-                Ticket.created_at == None
-            )
-        )
+            try:
+                date_to = (
+                    datetime.strptime(created_to, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    + timedelta(days=1)
+                    - timedelta(seconds=1)
+                )
+                filters.append(Ticket.created_at <= date_to)
+            except ValueError:
+                pass
 
-        query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
-
+        # Add the remaining late filters immediately to build the TRUE complete query
         if allowed_owner_ids is not None:
-            query = query.filter(Deal.deal_owner_id.in_(allowed_owner_ids))
+            filters.append(Deal.deal_owner_id.in_(allowed_owner_ids))
         if account_name:
-            query = query.filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
+            filters.append(Deal.account_name.ilike(f"%{account_name.strip()}%"))
 
-        tickets = query.options(selectinload(Ticket.deal)).all()
+        # Build the final unified query structure
+        final_query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
 
+        # 2. Get the real total count based on ALL combined filters (Can be > 200)
+        total_count = final_query.count()
+
+        # 3. Fetch the data, but CAP it at 200 items max directly in the database
+        tickets = final_query.options(selectinload(Ticket.deal)).limit(200).all()
+
+        # 4. Group your dataset by ticket status
         grouped_data = {}
         for t in tickets:
             status = t.ticket_status or "No Status"
             ticket_dict = format_ticket(t)
             ticket_dict["account_name"] = t.deal.account_name if t.deal else "-"
-            ticket_dict["deal_owner_id"] = str(t.deal.deal_owner_id) if t.deal and t.deal.deal_owner_id else None
+            ticket_dict["deal_owner_id"] = (
+                str(t.deal.deal_owner_id) if t.deal and t.deal.deal_owner_id else None
+            )
             grouped_data.setdefault(status, []).append(ticket_dict)
 
-        return {"data": grouped_data, "page_info": None}
+        # 5. Return matching the exact Deals structure perfectly
+        return {"data": grouped_data, "page_info": {"total": total_count}}
 
     # Standard list view
-    limit = 50
+    limit = 100
     offset = (page - 1) * limit
 
-    query = db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
+    query = (
+        db.query(Ticket).join(Deal, Ticket.deal_id == Deal.id).filter(and_(*filters))
+    )
 
     if allowed_owner_ids is not None:
         query = query.filter(Deal.deal_owner_id.in_(allowed_owner_ids))
@@ -117,7 +135,7 @@ def get_tickets_list(
 
     return {
         "data": [format_ticket(t) for t in tickets],
-        "page_info": {"page": page, "total": total}
+        "page_info": {"page": page, "total": total},
     }
 
 @tickets_router.post("")

@@ -146,24 +146,23 @@ def get_notes(
         notes_cursor = notes_collection.find(filter_query, projection)
         notes = []
         for note in notes_cursor:
-                    # FIXED: Exactly how R1X processes time offsets
-                    for time_key in ["Created_Time", "Modified_Time"]:
-                        if note.get(time_key):
-                            val = note[time_key]
-                            try:
-                                # 1. Parse string to naive datetime object, clearing decimal subseconds/Z modifiers
-                                clean_time_str = val.split(".")[0].replace("Z", "")
-                                dt_utc = datetime.fromisoformat(clean_time_str)
-                                
-                                # 2. Shift the naive UTC date to local IST (+5:30)
-                                dt_ist = dt_utc + timedelta(hours=5, minutes=30)
-                                
-                                # 3. Format into output string presentation style
-                                note[time_key] = dt_ist.strftime("%d %b %Y, %I:%M %p")
-                            except Exception as parse_err:
-                                print(f"Time Parsing Error for value '{val}': {parse_err}")
-                                pass
-                    notes.append(note)
+            # Time formatting
+            for time_key in ["Created_Time", "Modified_Time"]:
+                if note.get(time_key):
+                    val = note[time_key]
+                    try:
+                        dt = datetime.fromisoformat(val) if isinstance(val, str) else val
+                        # assume UTC if timezone missing
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+
+                        # convert to IST
+                        dt = dt.astimezone(IST)
+
+                        note[time_key] = dt.strftime("%d %b %Y, %I:%M %p")
+                    except:
+                        pass
+            notes.append(note)
         return notes
 
     except Exception as e:
