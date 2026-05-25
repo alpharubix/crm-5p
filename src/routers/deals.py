@@ -1,10 +1,15 @@
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from src.controllers.deals import create_deal, get_deals, update_deal_based_on_id
+from src.controllers.deals import (
+    create_deal,
+    get_deal_id,
+    get_deals,
+    update_deal_based_on_id,
+)
 from src.database import get_db, get_mongodb
 from src.schemas.deals import DealCreationBody, DealListResponse, DealSchema
 
@@ -85,3 +90,13 @@ async def update_deal(
         payload=payload,
         db=db,
     )
+
+
+@deals_router.get("/hot-lookup")
+def deal_hot_lookup(request: Request, deal_name: str, db: Session = Depends(get_db)):
+    try:
+        user_id = request.state.user_id
+        role = request.state.role
+        return get_deal_id(user_id=int(user_id), role=role, deal_name=deal_name, db=db)
+    except HTTPException as e:
+        raise e

@@ -80,6 +80,7 @@ class DealSchema(BaseModel):
 
     deal_expected_closing: date | None = None
     deal_status_closing: date | None = None
+    revenue:list[dict] | None = None
 
     # Account
     account_name: str | None = None

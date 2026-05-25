@@ -1,9 +1,19 @@
-from sqlalchemy import Column, Integer, Numeric, String, Text, DateTime, Date, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import BIGINT
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import BIGINT, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from ..database import Base
+
 
 class Deal(Base):
     __tablename__ = "deals_5p"
@@ -17,8 +27,17 @@ class Deal(Base):
 
     # Relationships
     account = relationship("Account", back_populates="deals")
+    revenue = relationship(
+        "Revenue",
+        back_populates="deal",
+        foreign_keys="Revenue.deal_id",
+        cascade="all, delete-orphan"
+    )
+
     owner = relationship("User", foreign_keys=[deal_owner_id], backref="deals")
-    tickets = relationship("Ticket", back_populates="deal", cascade="all, delete-orphan")
+    tickets = relationship(
+        "Ticket", back_populates="deal", cascade="all, delete-orphan"
+    )
 
     # Deal & Ticket Info
     ticket_id = Column(BIGINT, index=True)
@@ -78,8 +97,17 @@ class Deal(Base):
     assignee_id = Column(BIGINT, nullable=True)
     created_by = Column(BIGINT, nullable=True)
     modified_by = Column(BIGINT, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
     # Documentation
-    documents = relationship("DealDocument", back_populates="deal", cascade="all, delete-orphan")
+    documents = relationship(
+        "DealDocument", back_populates="deal", cascade="all, delete-orphan"
+    )
