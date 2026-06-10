@@ -11,7 +11,7 @@ class Contact(Base):
 
     id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
     
-    # FIXED: Bound to accounts_5p table
+    # FIXED: Bound to accounts table
     account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), index=True)
     owner_id = Column(BIGINT, ForeignKey("users.id"), index=True)
 
