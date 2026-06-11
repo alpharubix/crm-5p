@@ -287,6 +287,7 @@ def get_deals(
                 Deal.partner_code,
                 Deal.deal_expected_closing,
                 Deal.deal_status_closing,
+                Deal.deal_call_back_datetime,
             )
             .offset(offset)
             .limit(limit)
