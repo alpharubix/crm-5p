@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, selectinload
 
 from src.controllers.audit_log import log_action
@@ -20,9 +20,17 @@ tickets_router = APIRouter(prefix="/tickets", tags=["tickets"])
 # Helper function to format the database model into a dictionary
 def format_ticket(t: Ticket) -> dict:
     data = {c.name: getattr(t, c.name) for c in t.__table__.columns}
-    for key in ("id", "deal_id", "created_by", "modified_by", "partner_code"):
+    for key in ("id", "deal_id", "account_id", "created_by", "modified_by", "partner_code"):
         if data.get(key) is not None:
             data[key] = str(data[key])
+    data["account_name"] = (
+        t.account.account_name
+        if t.account
+        else (t.deal.account_name if t.deal else "-")
+    )
+    data["deal_owner_id"] = (
+        str(t.deal.deal_owner_id) if t.deal and t.deal.deal_owner_id else None
+    )
     return data
 
 
@@ -36,12 +44,12 @@ def get_tickets_list(
     kanban: bool = False,
     created_from: str | None = None,
     created_to: str | None = None,
-    ticket_status: str | None = None,
-    type_of_loan: str | None = None,
+    ticket_status: list[str] | None = Query(default=None),
+    type_of_loan: list[str] | None = Query(default=None),
     account_name: str | None = None,
     lender_login_from: str | None = None,
     lender_login_to: str | None = None,
-    deal_owner_id: int | None = None,
+    deal_owner_id: list[int] | None = Query(default=None),
     targeted_disbursement_from: str | None = None,
     targeted_disbursement_to: str | None = None,
     disbursement_from: str | None = None,
@@ -63,9 +71,29 @@ def get_tickets_list(
     if deal_id:
         filters.append(Ticket.deal_id == deal_id)
     if ticket_status:
-        filters.append(Ticket.ticket_status.ilike(f"%{ticket_status.strip()}%"))
+        statuses = [s.strip() for s in (ticket_status if isinstance(ticket_status, list) else [ticket_status]) if s and s.strip()]
+        if statuses:
+            filters.append(
+                or_(*[Ticket.ticket_status.ilike(f"%{s}%") for s in statuses])
+            )
     if type_of_loan:
-        filters.append(Ticket.type_of_loan.ilike(f"%{type_of_loan.strip()}%"))
+        loan_types = [lt.strip() for lt in (type_of_loan if isinstance(type_of_loan, list) else [type_of_loan]) if lt and lt.strip()]
+        if loan_types:
+            filters.append(
+                or_(*[Ticket.type_of_loan.ilike(lt) for lt in loan_types])
+            )
+    if deal_owner_id:
+        owner_ids = [int(oid) for oid in (deal_owner_id if isinstance(deal_owner_id, list) else [deal_owner_id]) if oid is not None]
+        if owner_ids:
+            if user_role in ("super_admin", "admin"):
+                filters.append(Deal.deal_owner_id.in_(owner_ids))
+            else:
+                allowed_set = {int(x) for x in allowed_owner_ids} if allowed_owner_ids else {user_id}
+                if not all(oid in allowed_set for oid in owner_ids):
+                    raise HTTPException(
+                        status_code=403, detail="No permission for this owner"
+                    )
+                filters.append(Deal.deal_owner_id.in_(owner_ids))
     if lender_login_from:
         try:
             filters.append(Ticket.lender_login_date >= datetime.strptime(lender_login_from, "%Y-%m-%d").date())
@@ -168,11 +196,24 @@ def get_tickets_list(
         query = query.filter(Deal.account_name.ilike(f"%{account_name.strip()}%"))
 
     total = query.count()
-    tickets = query.order_by(Ticket.created_at.desc()).offset(offset).limit(limit).all()
+    tickets = (
+        query.options(selectinload(Ticket.deal), selectinload(Ticket.account))
+        .order_by(Ticket.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    total_pages = (total + limit - 1) // limit if limit > 0 else 1
 
     return {
         "data": [format_ticket(t) for t in tickets],
-        "page_info": {"page": page, "total": total},
+        "page_info": {
+            "page": page,
+            "total_pages": total_pages,
+            "data_size": total,
+            "has_more": page < total_pages,
+        },
     }
 
 

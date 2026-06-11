@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, selectinload
 
 from src.controllers.audit_log import log_action
@@ -20,13 +20,13 @@ def get_deals(
     user_role: str,
     deal_id: int | None = None,
     account_name: str | None = None,
-    deal_status: str | None = None,
-    loan_type: str | None = None,
-    deal_owner_id: int | None = None,
-    lender_name: str | None = None,
+    deal_status: list[str] | None = None,
+    loan_type: list[str] | None = None,
+    deal_owner_id: list[int] | None = None,
+    lender_name: list[str] | None = None,
     lender_login_type: str | None = None,
-    ticket_login: str | None = None,
-    type_of_case_login: str | None = None,
+    ticket_login: list[str] | None = None,
+    type_of_case_login: list[str] | None = None,
     kanban: bool = False,
     expected_closing_from: str | None = None,
     expected_closing_to: str | None = None,
@@ -60,23 +60,40 @@ def get_deals(
         if account_name:
             filters.append(Deal.account_name.ilike(f"%{account_name.strip()}%"))
         if deal_status:
-            filters.append(Deal.deal_status.ilike(f"%{deal_status.strip()}%"))
+            statuses = [s.strip() for s in (deal_status if isinstance(deal_status, list) else [deal_status]) if s and s.strip()]
+            if statuses:
+                filters.append(
+                    or_(*[Deal.deal_status.ilike(f"%{s}%") for s in statuses])
+                )
         if loan_type:
-            filters.append(Deal.loan_type.ilike(f"%{loan_type.strip()}%"))
+            loan_types = loan_type if isinstance(loan_type, list) else [loan_type]
+            filters.append(
+                or_(*[Deal.loan_type.ilike(lt.strip()) for lt in loan_types])
+            )
         if deal_owner_id:
-            filters.append(Deal.deal_owner_id == deal_owner_id)
+            filters.append(Deal.deal_owner_id.in_(deal_owner_id))
         if lender_name:
-            filters.append(Deal.lender_name.ilike(f"%{lender_name.strip()}%"))
+            lenders = [l.strip() for l in (lender_name if isinstance(lender_name, list) else [lender_name]) if l and l.strip()]
+            if lenders:
+                filters.append(
+                    or_(*[Deal.lender_name.ilike(f"%{l}%") for l in lenders])
+                )
         if lender_login_type:
             filters.append(
                 Deal.lender_login_type.ilike(f"%{lender_login_type.strip()}%")
             )
         if ticket_login:
-            filters.append(Deal.ticket_login.ilike(f"%{ticket_login.strip()}%"))
+            tickets = [t.strip() for t in (ticket_login if isinstance(ticket_login, list) else [ticket_login]) if t and t.strip()]
+            if tickets:
+                filters.append(
+                    or_(*[Deal.ticket_login.ilike(f"%{t}%") for t in tickets])
+                )
         if type_of_case_login:
-            filters.append(
-                Deal.type_of_case_login.ilike(f"%{type_of_case_login.strip()}%")
-            )
+            cases = [c.strip() for c in (type_of_case_login if isinstance(type_of_case_login, list) else [type_of_case_login]) if c and c.strip()]
+            if cases:
+                filters.append(
+                    or_(*[Deal.type_of_case_login.ilike(f"%{c}%") for c in cases])
+                )
 
         # 3. Handle Safe Date Parameter Conversions
         if expected_closing_from:
@@ -248,6 +265,8 @@ def get_deals(
                     deal_dict["deal_owner_id"] = str(deal.deal_owner_id)
                 if deal.account_id:
                     deal_dict["account_id"] = str(deal.account_id)
+                deal_dict["case_status"] = deal.deal_status
+                deal_dict["case_stage"] = deal.deal_stage
 
                 deal_dict["payment_receipt"] = None
                 deal_dict["notes"] = notes
@@ -288,6 +307,7 @@ def get_deals(
                 Deal.deal_expected_closing,
                 Deal.deal_status_closing,
                 Deal.deal_call_back_datetime,
+                Deal.type_of_case_login,
             )
             .offset(offset)
             .limit(limit)
@@ -301,6 +321,8 @@ def get_deals(
                     **d._asdict(),
                     "id": str(d.id),
                     "deal_owner_id": str(d.deal_owner_id) if d.deal_owner_id else None,
+                    "case_status": d.deal_status,
+                    "case_stage": d.deal_stage,
                 }
                 for d in deals
             ],

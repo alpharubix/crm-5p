@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -27,15 +27,15 @@ def get_deals_list(
     page: int = 1,
     deal_id: int | None = None,
     account_name: str | None = None,
-    loan_type: str | None = None,
-    deal_owner_id: int | None = None,
-    case_status: str | None = None,
+    loan_type: list[str] | None = Query(default=None),
+    deal_owner_id: list[int] | None = Query(default=None),
+    case_status: list[str] | None = Query(default=None),
     kanban: bool = False,
     created_from: str | None = None,
     created_to: str | None = None,
-    lender_name: str | None = None,
-    ticket_login: str | None = None,
-    type_of_case_login: str | None = None,
+    lender_name: list[str] | None = Query(default=None),
+    ticket_login: list[str] | None = Query(default=None),
+    type_of_case_login: list[str] | None = Query(default=None),
     expected_closing_from: str | None = None,
     expected_closing_to: str | None = None,
     status_closing_from: str | None = None,
