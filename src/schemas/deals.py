@@ -27,6 +27,7 @@ class DealSchema(BaseModel):
     # Deal & Ticket Info
     ticket_id: str | None = None
     ticket_number: str | None = None
+    deal_name: str | None = None
     deal_type: str | None = None
     loan_type: str | None = None
     type_of_login: str | None = None
@@ -155,6 +156,7 @@ class DealCreationBody(BaseModel):
     # Deal & Ticket Info
     ticket_id: Optional[int] = None
     ticket_number: Optional[int] = None
+    deal_name: Optional[str] = None
     deal_type: Optional[str] = None
     loan_type: Optional[str] = None
     type_of_login: Optional[str] = None
