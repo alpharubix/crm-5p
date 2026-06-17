@@ -283,14 +283,14 @@ class ListAccountsResponse(BaseModel):
     data: List[AccountItem]
 
 
-class AccountStatusHistoryResponse(BaseModel):
-    id: str
-    account_id: str
-    old_status: Optional[str]  # Optional because first status has no old_status
-    new_status: str
-    changed_by: int
-    changed_at: datetime
+# class AccountStatusHistoryResponse(BaseModel):
+#     id: str
+#     account_id: str
+#     old_status: Optional[str]  # Optional because first status has no old_status
+#     new_status: str
+#     changed_by: int
+#     changed_at: datetime
 
-    class Config:
-        from_attributes = True  # this tells Pydantic: read from SQLAlchemy object
-        # without this, it only reads plain dicts
+#     class Config:
+#         from_attributes = True  # this tells Pydantic: read from SQLAlchemy object
+#         # without this, it only reads plain dicts

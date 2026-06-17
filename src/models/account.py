@@ -120,18 +120,18 @@ class Account(Base):
         return self.city
 
 
-class AccountStatusHistory(Base):
-    __tablename__ = "account_status_history"
+# class AccountStatusHistory(Base):
+#     __tablename__ = "account_status_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), nullable=False, index=True)
-    old_status = Column(String, nullable=True)
-    new_status = Column(String, nullable=False)
-    changed_by = Column(BIGINT, ForeignKey("users.id"), nullable=False)
-    changed_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+#     id = Column(Integer, primary_key=True, autoincrement=True)
+#     account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), nullable=False, index=True)
+#     old_status = Column(String, nullable=True)
+#     new_status = Column(String, nullable=False)
+#     changed_by = Column(BIGINT, ForeignKey("users.id"), nullable=False)
+#     changed_at = Column(
+#         DateTime(timezone=True), server_default=func.now(), nullable=False
+#     )
 
-    # relationships
-    account = relationship("Account", backref="status_history")
-    changed_by_user = relationship("User")
+#     # relationships
+#     account = relationship("Account", backref="status_history")
+#     changed_by_user = relationship("User")

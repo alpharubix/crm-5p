@@ -11,7 +11,7 @@ from ..controllers import account as repo
 from ..controllers.audit_log import log_action
 from ..database import get_db, get_mongodb
 from ..models.account import Account
-from ..schemas.account import AccountBase, GetlistAccountResponse, ListAccountsResponse, AccountStatusHistoryResponse
+from ..schemas.account import AccountBase, GetlistAccountResponse, ListAccountsResponse
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -77,13 +77,13 @@ async def update_account(
 
 
 #account status trackin route
-@router.get("/status-history/{account_id}", response_model=list[AccountStatusHistoryResponse])
-def get_status_history(
-    account_id: int,
-    page: int = 1,
-    db: Session = Depends(get_db)
-):
-    return repo.get_account_status_history(db, account_id, page)
+# @router.get("/status-history/{account_id}", response_model=list[AccountStatusHistoryResponse])
+# def get_status_history(
+#     account_id: int,
+#     page: int = 1,
+#     db: Session = Depends(get_db)
+# ):
+#     return repo.get_account_status_history(db, account_id, page)
 
 
 @router.post("/accounts-reassignment-csv-upload")

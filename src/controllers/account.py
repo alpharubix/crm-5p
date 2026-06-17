@@ -22,7 +22,7 @@ from src.controllers.notes import get_notes
 from src.models.ticket import Ticket
 from src.utility.utils import get_account_headers
 
-from ..models.account import Account, AccountStatusHistory
+from ..models.account import Account
 from ..models.user import User
 from ..schemas.account import AccountBase
 
@@ -44,13 +44,13 @@ def create_account(
     db.add(new_account)
     db.flush()
 
-    history = AccountStatusHistory(
-        account_id=new_account.id,
-        old_status=None,
-        new_status=new_account.account_status,
-        changed_by=user_id,
-    )
-    db.add(history)
+    # history = AccountStatusHistory(
+    #     account_id=new_account.id,
+    #     old_status=None,
+    #     new_status=new_account.account_status,
+    #     changed_by=user_id,
+    # )
+    # db.add(history)
     db.commit()
     db.refresh(new_account)
 
@@ -174,15 +174,15 @@ def update_account(
     flag_modified(db_account, "custom_fields")
     # db_account.modified_by_id = user_id
 
-    new_status = db_account.account_status
-    if new_status != old_status:
-        history = AccountStatusHistory(
-            account_id=account_id,
-            old_status=old_status,
-            new_status=new_status,
-            changed_by=user_id,
-        )
-        db.add(history)
+    # new_status = db_account.account_status
+    # if new_status != old_status:
+    #     history = AccountStatusHistory(
+    #         account_id=account_id,
+    #         old_status=old_status,
+    #         new_status=new_status,
+    #         changed_by=user_id,
+    #     )
+    #     db.add(history)
 
     if account_name_changed and new_account_name:
         from src.models.deal import Deal
@@ -459,25 +459,25 @@ def get_account_by_id(db: Session, account_id: int) -> Account:
 
 
 # Account_Status_history i.e trackin of acc history by id
-def get_account_status_history(db: Session, account_id: int, page: int = 1):
-    limit = 20
-    offset = (page - 1) * limit
+# def get_account_status_history(db: Session, account_id: int, page: int = 1):
+#     limit = 20
+#     offset = (page - 1) * limit
 
-    history = (
-        db.query(AccountStatusHistory)
-        .filter(AccountStatusHistory.account_id == account_id)
-        .options(joinedload(AccountStatusHistory.changed_by_user))
-        .order_by(AccountStatusHistory.changed_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+#     history = (
+#         db.query(AccountStatusHistory)
+#         .filter(AccountStatusHistory.account_id == account_id)
+#         .options(joinedload(AccountStatusHistory.changed_by_user))
+#         .order_by(AccountStatusHistory.changed_at.desc())
+#         .offset(offset)
+#         .limit(limit)
+#         .all()
+#     )
 
-    if not history:
-        raise HTTPException(
-            status_code=404, detail="No status history found for this account"
-        )
-    return history
+#     if not history:
+#         raise HTTPException(
+#             status_code=404, detail="No status history found for this account"
+#         )
+#     return history
 
 
 async def accounts_csv_update(file: UploadFile, db: Session):
