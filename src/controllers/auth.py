@@ -1,6 +1,6 @@
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 
 from src.models.user import User
 from src.schemas.authentication import Login
@@ -161,7 +161,6 @@ users = {  # users for fast lookup
     3899927000000615348: "Ashok M",
     3899927000000964875: "Suraj Gupta",
     3899927000000882594: "Myisa Beiucy",
-    3899927000000723465: "Kaveri Metri",
     3899927000000488938: "Nagaraj Hodmany",
     3899927000000208140: "Shivaraj P N",
     3899927000000647914: "Prajwal G P",
@@ -169,4 +168,6 @@ users = {  # users for fast lookup
     3899927000000240595: "Chiranjeevi B S",
     3899927000000319812: "Ashwini R",
     3899927000000194804: "Pranay Kumar",
+    3899927000000503894: "Saran D",
+    3899927000000135140: "Prathamesh Prakash",
 }
