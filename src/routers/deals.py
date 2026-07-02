@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, File, UploadFile
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -9,6 +9,7 @@ from src.controllers.deals import (
     get_deal_id,
     get_deals,
     update_deal_based_on_id,
+    update_deals_based_on_csv,
 )
 from src.database import get_db, get_mongodb
 from src.schemas.deals import DealCreationBody, DealListResponse, DealSchema
@@ -100,3 +101,23 @@ def deal_hot_lookup(request: Request, deal_name: str, db: Session = Depends(get_
         return get_deal_id(user_id=int(user_id), role=role, deal_name=deal_name, db=db)
     except HTTPException as e:
         raise e
+
+
+@deals_router.post("/deals-update-csv-upload")
+async def deals_update_csv(
+    request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)
+):
+    user_role = request.state.role
+    if user_role not in ("super_admin", "admin", "manager"):
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to upload CSV"
+        )
+    try:
+        user_id = request.state.user_id
+        return await update_deals_based_on_csv(file, db, user_id, user_role)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"unable to process csv error: {str(e)}"
+        )
