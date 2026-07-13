@@ -83,4 +83,5 @@ app.include_router(revenue_router)
 if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found
     port = int(os.getenv("PORT", 8080))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # If dev then reload true or else false
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=os.getenv("DEV", False))
