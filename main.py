@@ -1,6 +1,8 @@
+from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
 from fastapi.middleware.cors import CORSMiddleware
+load_dotenv(override=True)
 from src.database import Base, engine
 from src.middleware.auth import authorization
 from src.models.audit_log import AuditLog  # so Base picks it up
@@ -21,10 +23,8 @@ from src.routers.revenue import revenue_router
 import os
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from src.controllers.Background_threads import BackgroundThreadPool
-load_dotenv(override=True)
 
 '''
 Long Server Start Cause:
@@ -84,4 +84,5 @@ if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found
     port = int(os.getenv("PORT", 8080))
     # If dev then reload true or else false
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=os.getenv("DEV", False))
+    is_dev = os.getenv("DEV", "False").lower() in ("true", "1", "t")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=is_dev)
