@@ -125,6 +125,18 @@ class MANAGERID:
         # ],
         # manager_id: [executive_ids]
     }
+    SUPERADMIN_AND_ADMIN_MAP = {
+        3899927000000484472,  # Anslem Prathap
+        3899927000000240595,  # Chiranjeevi B S
+        3899927000000498931,  # Karthik H M
+        3899927000000468959,  # Manjunath Jain
+        3899927000000488938,  # Nagaraj Hodmany
+        3899927000000781432,  # Namrata Srivastava
+        3899927000000647914,  # Prajwal G P
+        3899927000000208140,  # Shivaraj P N
+        3899927000000596426,  # Subhasini T S
+        3899927000000981006,  # Sutapa Roy
+    }
 
 
 users = {  # users for fast lookup
