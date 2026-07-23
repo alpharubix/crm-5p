@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
+import pydantic
 
 from pydantic import (
     BaseModel,
@@ -77,6 +78,24 @@ class CustomerReferencesInfo(BaseModel):
     person2: ReferencePerson = Field(default_factory=ReferencePerson)
 
 
+# Employment type choices for Salaried profile
+EmploymentType = Literal[
+    "Private Employee",
+    "Government Employee",
+    "Retired",
+    "Others",
+]
+
+
+class CustomerSalaryDetailsInfo(BaseModel):
+    """Structured salary details — applicable when profile_type = 'Salaried'."""
+
+    employment_type: Optional[EmploymentType] = None  # select
+    employer_name: Optional[str] = None               # text
+    employment_vintage: Optional[int] = None           # number (years)
+    annual_income: Optional[float] = None              # number (currency)
+
+
 class AccountBase(BaseModel):
     # Identity & Contact (Required)
     first_name: str
@@ -101,6 +120,8 @@ class AccountBase(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+    profile_type: Optional[str] = None
+    is_priority_account: Optional[str] = None
 
     # Flags & Dates (Optional)
     waba_interested: Optional[bool] = False
@@ -129,6 +150,24 @@ class AccountBase(BaseModel):
     )
     customer_references: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
+    # Customer Salary Details — optional; frontend enforces when profile_type = "Salaried"
+    customer_salary_details: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+    @field_validator("pincode", mode="before")
+    @classmethod
+    def validate_pincode(cls, value):
+        if value is None or value == "":
+            return value
+        try:
+            pincode = int(str(value).strip())
+        except ValueError as exc:
+            raise ValueError("pincode must be numeric") from exc
+
+        pincode_str = str(pincode)
+        if len(pincode_str) != 6:
+            raise ValueError("pincode must be a 6 digit numeric value")
+        return pincode_str
+
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -155,6 +194,8 @@ class AccountResponse(BaseModel):
     pincode: Optional[str] = None
     source: Optional[str] = None
     account_stage: Optional[Any] = None
+    profile_type: Optional[str] = None
+    is_priority_account: Optional[str] = None
 
     created_by_id: Optional[str] = None
     created_time: Optional[datetime] = None
@@ -167,6 +208,8 @@ class AccountResponse(BaseModel):
     account_linked_contact: Optional[List["ContactResponse"]] = None
     deals: Optional[List["DealSchema"]] = None
     notes: Optional[Any] = None
+    modified_by_id: Optional[str] = None
+    modified_by: Optional[UserResponseAccount] = None
 
     # ========== NEW FIELDS (Add these) ==========
     source_type: Optional[str] = None
@@ -187,6 +230,9 @@ class AccountResponse(BaseModel):
     )
     customer_references: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
+    # Customer Salary Details — optional; frontend enforces when profile_type = "Salaried"
+    customer_salary_details: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
     model_config = {"from_attributes": True}
 
     @field_serializer(
@@ -204,7 +250,7 @@ class AccountResponse(BaseModel):
             return value
 
     @field_validator(
-        "id", "account_owner_id", "created_by_id", "parent_account_id", mode="before"
+        "id", "account_owner_id", "created_by_id", "modified_by_id", "parent_account_id", mode="before"
     )
     @classmethod
     def coerce_ids_to_str(cls, value):

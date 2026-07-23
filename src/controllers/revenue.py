@@ -262,6 +262,9 @@ def update_revenue_controller(
 
         for key, value in update_data.items():
             setattr(revenue, key, value)
+        
+        revenue.updated_at = datetime.now(timezone.utc)
+        revenue.updated_by = user_id
 
         db.commit()
         db.refresh(revenue)

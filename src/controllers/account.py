@@ -125,6 +125,7 @@ def update_account(
         "applicant_residence_address",
         "co_applicant_residence_address",
         "customer_references",
+        "customer_salary_details",   # salary info for Salaried profile_type
     ]
 
     for key, value in payload.items():
@@ -354,6 +355,7 @@ def get_all_accounts(
                 selectinload(Account.created_by),
                 selectinload(Account.account_linked_contact),
                 selectinload(Account.deals),
+                selectinload(Account.modified_by)
             )
             .limit(limit)
             .all()
