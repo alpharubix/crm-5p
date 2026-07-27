@@ -20,7 +20,7 @@ tickets_router = APIRouter(prefix="/tickets", tags=["tickets"])
 # Helper function to format the database model into a dictionary
 def format_ticket(t: Ticket) -> dict:
     data = {c.name: getattr(t, c.name) for c in t.__table__.columns}
-    for key in ("id", "deal_id", "account_id", "created_by", "modified_by", "partner_code"):
+    for key in ("id", "deal_id", "account_id", "created_by", "modified_by"):
         if data.get(key) is not None:
             data[key] = str(data[key])
     data["account_name"] = (
@@ -233,7 +233,7 @@ async def create_ticket(request: Request, db: Session = Depends(get_db)):
         "potential",
         "lender_login_type",
         "lender_login_date",
-        "partner_code",
+        "partner_name",
         "targeted_disbursement_date",
         "type_of_loan",
         "disbursement_date",

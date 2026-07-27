@@ -87,8 +87,8 @@ def get_deal_headers():
         "deal_status",
         "deal_stage",
         "lender_name",
+        "partner_name",
         "lender_login_type",
-        "partner_code",
         "deal_status_closing",
         "deal_expected_closing",
         "deal_owner_id",
@@ -104,7 +104,7 @@ def get_ticket_headers():
         "potential",
         "lender_login_type",
         "lender_login_date",
-        "partner_code",
+        "partner_name",
         "targeted_disbursement_date",
         "type_of_loan",
         "disbursement_date",
@@ -124,4 +124,4 @@ def get_ticket_headers():
         "customer_rejection_reason",
         "customer_rejection_status_explanation",
         "lender_rejection_status_explanation",
-    }
+    }
