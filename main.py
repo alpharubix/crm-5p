@@ -5,9 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv(override=True)
 from src.database import Base, engine
 from src.middleware.auth import authorization
-from src.models.audit_log import AuditLog  # so Base picks it up
-from src.models.contact import Contact
 from src.models.project import Project, Task
+from src.models.support_ticket import SupportTicket  # noqa
 from src.routers import account as account_router
 from src.routers import audit_log as audit_log_router
 from src.routers import contact as contact_router
@@ -21,6 +20,7 @@ from src.routers.export_csv import export_csv_router
 from src.routers.deal_documents import deal_docs_router
 from src.routers.revenue import revenue_router
 from src.routers.webhook import webhook_api_router
+from src.routers.support_tickets import support_tickets_router
 import os
 
 import uvicorn
@@ -80,6 +80,7 @@ app.include_router(tickets_router)
 app.include_router(deal_docs_router)
 app.include_router(revenue_router)
 app.include_router(webhook_api_router)
+app.include_router(support_tickets_router)
 
 if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found
