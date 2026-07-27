@@ -2,26 +2,25 @@ import csv
 import io
 import logging
 import math
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.controllers.audit_log import log_action
 from src.controllers.auth import MANAGERID
-from src.controllers.Background_threads import BackgroundThreadPool
 from src.controllers.notes import get_notes
-from src.models.ticket import Ticket
 from src.models.deal_document import DealDocument
 from src.models.revenue import Revenue
+from src.models.ticket import Ticket
 from src.utility.utils import get_account_headers
 
 from ..models.account import Account
@@ -37,7 +36,7 @@ def create_account(
 
     account_data = data.model_dump()
     account_data["created_by_id"] = user_id
-    account_data["assignment_date"] = datetime.now(timezone.utc)
+    account_data["assignment_date"] = datetime.now(UTC)
 
     if data.created_time:
         account_data["created_time"] = data.created_time
@@ -106,7 +105,7 @@ def create_account(
 
 
 def update_account(
-    db: Session, account_id: int, payload: Dict[str, Any], user_id: int, user_role: str
+    db: Session, account_id: int, payload: dict[str, Any], user_id: int, user_role: str
 ):
     db.expire_all()
     db_account = (
@@ -142,9 +141,9 @@ def update_account(
                     try:
                         value = datetime.fromisoformat(value)
                         if value.tzinfo is None:
-                            value = value.replace(tzinfo=timezone.utc)
+                            value = value.replace(tzinfo=UTC)
                         if key == "call_back_date_time" and value < datetime.now(
-                            timezone.utc
+                            UTC
                         ):
                             raise HTTPException(
                                 status_code=400,
@@ -173,7 +172,7 @@ def update_account(
     is_reassigned = False
     new_owner_id = payload.get("account_owner_id")
     if new_owner_id is not None and str(new_owner_id) != str(old_owner_id):
-        db_account.assignment_date = datetime.now(timezone.utc)
+        db_account.assignment_date = datetime.now(UTC)
         is_reassigned = True
 
     db_account.custom_fields = custom_fields_dict
@@ -238,7 +237,7 @@ def update_account(
         raise e
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Database error: {e!s}")
 
 
 def get_all_accounts(
@@ -246,21 +245,21 @@ def get_all_accounts(
     db: Session,
     mongodb: Collection,
     page: int,
-    account_name: Optional[str] = None,
-    account_id: Optional[int] = None,
-    account_status: Optional[list[str]] = None,
-    account_stage: Optional[str] = None,
-    source: Optional[list[str]] = None,
-    type_of_business: Optional[str] = None,
-    industry: Optional[list[str]] = None,
-    city: Optional[str] = None,
-    state: Optional[str] = None,
-    pincode: Optional[str] = None,
-    waba_interested: Optional[bool] = None,
-    business_status: Optional[str] = None,
-    call_back_date_time: Optional[datetime] = None,
-    account_owner_id: Optional[list[int]] = None,
-    phone_number: Optional[str] = None,
+    account_name: str | None = None,
+    account_id: int | None = None,
+    account_status: list[str] | None = None,
+    account_stage: str | None = None,
+    source: list[str] | None = None,
+    type_of_business: str | None = None,
+    industry: list[str] | None = None,
+    city: str | None = None,
+    state: str | None = None,
+    pincode: str | None = None,
+    waba_interested: bool | None = None,
+    business_status: str | None = None,
+    call_back_date_time: datetime | None = None,
+    account_owner_id: list[int] | None = None,
+    phone_number: str | None = None,
 ):
     MANAGER_EXECUTIVES_MAP = MANAGERID().MANAGER_EXECUTIVES_MAP
 
@@ -483,6 +482,13 @@ def get_all_accounts(
                 Account.city,
                 Account.call_back_date_time,
                 Account.phone,
+                Account.account_stage,
+                Account.business_status,
+                Account.is_priority_account,
+                Account.source_date,
+                Account.source_type,
+                Account.assignment_date,
+                Account.modified_time
             )
             .filter(and_(*filters))
             .offset(offset)
@@ -802,5 +808,5 @@ async def update_accounts_based_on_csv(file, db: Session, user_id: int, user_rol
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Processing error: {str(e)}", "row_errors": error_list},
+            content={"detail": f"Processing error: {e!s}", "row_errors": error_list},
         )

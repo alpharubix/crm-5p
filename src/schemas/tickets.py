@@ -4,13 +4,13 @@ from datetime import datetime, date
 
 class TicketCreationBody(BaseModel):
     deal_id: int
+    partner_name: Optional[str] = None
     loan_account_status: Optional[str] = None
     ticket_login: Optional[str] = None
     lender_name: Optional[str] = None
     potential: Optional[float] = None
     lender_login_type: Optional[str] = None
     lender_login_date: Optional[date] = None
-    partner_code: Optional[str] = None
     targeted_disbursement_date: Optional[date] = None
     type_of_loan: Optional[str] = None
     disbursement_date: Optional[date] = None
