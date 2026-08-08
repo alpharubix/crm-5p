@@ -15,13 +15,15 @@ from sqlalchemy.orm import relationship
 
 
 class Revenue(Base):
-    __tablename__ = "revenue_5p"
+    __tablename__ = "revenue_merged"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
+    company_id = Column(Integer, default=2, nullable=False, index=True)
+
     deal_id = Column(
         BIGINT,
-        ForeignKey("deals_5p.id"),
+        ForeignKey("deals_merged.id"),
         nullable=False
     )
 

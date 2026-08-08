@@ -85,7 +85,7 @@ def fetch_revenue(
         offset = (page - 1) * limit
 
         query = db.query(Revenue)
-        filters = []
+        filters = [Revenue.company_id == 2]
 
         user_id = request.state.user_id
         role = request.state.role

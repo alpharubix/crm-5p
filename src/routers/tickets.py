@@ -66,7 +66,7 @@ def get_tickets_list(
     elif user_role == "executive":
         allowed_owner_ids = [user_id]
 
-    filters = []
+    filters = [Ticket.company_id == 2]
 
     if deal_id:
         filters.append(Ticket.deal_id == deal_id)

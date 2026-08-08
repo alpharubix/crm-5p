@@ -266,7 +266,7 @@ def get_all_accounts(
     limit = 30
     offset = (page - 1) * limit
     query = db.query(Account)
-    filters = []
+    filters = [Account.company_id == 2]
     user_id = request.state.user_id
     role = request.state.role
     single_id_request = False

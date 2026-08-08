@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, String
+from sqlalchemy import Column, DateTime, ForeignKey, String, Integer
 from sqlalchemy.dialects.postgresql import BIGINT, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -7,12 +7,13 @@ from ..database import Base
 
 
 class Contact(Base):
-    __tablename__ = "contacts_5p"
+    __tablename__ = "contacts_merged"
 
     id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
+    company_id = Column(Integer, default=2, nullable=True, index=True)
     
     # FIXED: Bound to accounts table
-    account_id = Column(BIGINT, ForeignKey("accounts_5p.id"), index=True)
+    account_id = Column(BIGINT, ForeignKey("accounts_merged.id"), index=True)
     owner_id = Column(BIGINT, ForeignKey("users.id"), index=True)
 
     first_name = Column(String, nullable=True)
