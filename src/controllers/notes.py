@@ -48,8 +48,15 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
         elif module_name in ['Deals', 'Deals_5pc']:
             raw_parent_deal = pg_db.query(Deal.id, Deal.account_name).filter(Deal.id == int(parent_id)).first()
             Parent_Id = {
-                "id": str(raw_parent_deal.id),
-                "deal_name": raw_parent_deal.account_name,
+                "id": str(raw_parent_deal.id) if raw_parent_deal else str(parent_id),
+                "deal_name": raw_parent_deal.account_name if raw_parent_deal else "Unknown Entity",
+            }
+        elif module_name in ['Account_Tasks', 'Account_Tasks_5pc', 'AccountTask', 'AccountTask_5pc', 'AccountTasks']:
+            from src.models.account_task import AccountTask
+            raw_parent_task = pg_db.query(AccountTask.id, AccountTask.task_type).filter(AccountTask.id == int(parent_id)).first()
+            Parent_Id = {
+                "id": str(raw_parent_task.id) if raw_parent_task else str(parent_id),
+                "task_name": f"Account Task #{raw_parent_task.id}" if raw_parent_task else "Account Task",
             }
         else:
             # Fallback if an unexpected string reaches the endpoint

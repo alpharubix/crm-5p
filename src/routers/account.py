@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.params import Body
@@ -37,14 +37,23 @@ def list_all(
     state: str | None = None,
     db: Session = Depends(get_db),
     mongodb=Depends(get_mongodb),
-    account_stage: str | None = None,
+    account_stage: list[str] | str | None = Query(default=None),
     account_status: list[str] | None = Query(default=None),
     account_name: Optional[str] = None,
     account_owner_id: list[int] | None = Query(default=None),
     industry: list[str] | None = Query(default=None),
     source: list[str] | None = Query(default=None),
+    source_type: list[str] | None = Query(default=None),
+    business_status: list[str] | str | None = Query(default=None),
+    waba_interested: Optional[str] = None,
+    is_priority_account: Optional[str] = None,
     phone: str | None = None,
     call_back_date_time: str = None,
+    cb_condition: Optional[str] = Query(None),
+    cb_users: Optional[List[int]] = Query(None),
+    cb_date_condition: Optional[str] = Query(None),
+    cb_from_date: Optional[str] = Query(None),
+    cb_to_date: Optional[str] = Query(None),
 ):
     return repo.get_all_accounts(
         request=request,
@@ -59,9 +68,18 @@ def list_all(
         account_name=account_name,
         account_owner_id=account_owner_id,
         source=source,
+        source_type=source_type,
+        business_status=business_status,
+        waba_interested=waba_interested,
+        is_priority_account=is_priority_account,
         phone_number=phone,
         industry=industry,
         call_back_date_time=call_back_date_time,
+        cb_condition=cb_condition,
+        cb_users=cb_users,
+        cb_date_condition=cb_date_condition,
+        cb_from_date=cb_from_date,
+        cb_to_date=cb_to_date,
     )
 
 

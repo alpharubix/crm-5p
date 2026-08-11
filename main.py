@@ -1,38 +1,39 @@
-from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+
 load_dotenv(override=True)
-from src.database import Base, engine
-from src.middleware.auth import authorization
-from src.models.project import Project, Task
-from src.models.support_ticket import SupportTicket  # noqa
-from src.routers import account as account_router
-from src.routers import audit_log as audit_log_router
-from src.routers import contact as contact_router
-from src.routers import user as user_router
-from src.routers import project as project_router
-from src.routers.authentication import authentication_router
-from src.routers.notes import notes_router
-from src.routers.deals import deals_router
-from src.routers.tickets import tickets_router
-from src.routers.export_csv import export_csv_router
-from src.routers.deal_documents import deal_docs_router
-from src.routers.revenue import revenue_router
-from src.routers.webhook import webhook_api_router
-from src.routers.support_tickets import support_tickets_router
 import os
 
 import uvicorn
 from fastapi import FastAPI
-from src.controllers.Background_threads import BackgroundThreadPool
 
-'''
+from src.controllers.Background_threads import BackgroundThreadPool
+from src.middleware.auth import authorization
+from src.models.account_task import AccountTask  # noqa
+from src.routers import account as account_router
+from src.routers import account_task as account_task_router
+from src.routers import audit_log as audit_log_router
+from src.routers import contact as contact_router
+from src.routers import project as project_router
+from src.routers import user as user_router
+from src.routers.authentication import authentication_router
+from src.routers.deal_documents import deal_docs_router
+from src.routers.deals import deals_router
+from src.routers.export_csv import export_csv_router
+from src.routers.notes import notes_router
+from src.routers.revenue import revenue_router
+from src.routers.support_tickets import support_tickets_router
+from src.routers.tickets import tickets_router
+from src.routers.webhook import webhook_api_router
+
+"""
 Long Server Start Cause:
 These functions runs synchronously at the module level. It queries the database over the network to fetch the schema for every existing table. This causes severe blocking I/O during initialization.
 
 Do not reflect or create tables on application startup. Use alembic (which is already in dependencies) to manage database migrations offline.
-'''
+"""
 # Base.metadata.clear()
 # Base.metadata.reflect(bind=engine)
 # Base.metadata.create_all(bind=engine)
@@ -46,11 +47,14 @@ async def lifespan(app: FastAPI):
     yield
     BackgroundThreadPool.shutdown()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 @app.get("/")
 def test():
     return {"message": "Hello World"}
+
 
 app.middleware("http")(authorization)
 
@@ -60,7 +64,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:5174",
         "https://r1xchange-crm.netlify.app",
-        "https://5pointcredit-crm.vercel.app"
+        "https://5pointcredit-crm.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -68,6 +72,7 @@ app.add_middleware(
 )
 
 app.include_router(account_router.router)
+app.include_router(account_task_router.router)
 app.include_router(contact_router.router)
 app.include_router(user_router.router)
 app.include_router(authentication_router)
