@@ -8,13 +8,19 @@ from email.mime.text import MIMEText
 logger = logging.getLogger(__name__)
 
 # Single Source of Truth for Sender info to prevent domain spoofing errors
-SENDER_EMAIL = "suraj.gupta@r1xchange.com"
-SENDER_DISPLAY = "R1xchange CRM Mail Service"
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "suraj.gupta@r1xchange.com")
+SENDER_DISPLAY = os.getenv("SENDER_DISPLAY", "5PointCredit CRM Mail Service")
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.zoho.in")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 
 
 def create_smtp_connection():
     try:
-        smtp = smtplib.SMTP_SSL("smtp.zoho.in", 465, timeout=10)
+        if SMTP_PORT == 465:
+            smtp = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
+        else:
+            smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+            smtp.starttls()
         smtp.ehlo()
         app_password = os.getenv("APP_PASSWORD")
 
@@ -40,8 +46,8 @@ def prepare_mail_body(module_name, parent_id, user_name, note):
         <tr><td><strong>Mentioned By user</strong></td><td>{user_name}</td></tr>
         <tr><td><strong>Note</strong></td><td>{note}</td></tr>
         </table>
-        <p>Please log in to the CRM system to take necessary action.</p>
-        <p>Regards,<br>R1xchange CRM SERVER</p>
+        <p>Please log in to the 5PointCredit CRM system to take necessary action.</p>
+        <p>Regards,<br>5PointCredit CRM System</p>
     """
     return html_content
 
