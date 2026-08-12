@@ -116,11 +116,19 @@ class AccountTask(Base):
     def computed_task_status(self):
         if self.task_status in ["Completed", "Verified"]:
             return self.task_status
+        now = datetime.now(timezone.utc)
         if self.task_due_date_time:
-            now = datetime.now(timezone.utc)
             due = self.task_due_date_time
             if due.tzinfo is None:
                 due = due.replace(tzinfo=timezone.utc)
             if due < now:
                 return "Overdue"
+            if self.task_assigned_date_time:
+                assigned = self.task_assigned_date_time
+                if assigned.tzinfo is None:
+                    assigned = assigned.replace(tzinfo=timezone.utc)
+                if due < assigned:
+                    return "Overdue"
+        if self.task_status == "Unassigned" and self.assigned_to_id is not None:
+            return "Assigned"
         return self.task_status

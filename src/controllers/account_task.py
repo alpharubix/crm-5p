@@ -12,6 +12,7 @@ from src.models.user import User
 from src.schemas.account_task import AccountTaskCreate, AccountTaskUpdate, BulkAccountTaskCreate
 from src.controllers.audit_log import log_action
 from src.controllers.notes import get_notes
+from src.controllers.auth import MANAGERID
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -56,6 +57,11 @@ def create_account_task(db: Session, task_in: AccountTaskCreate, current_user_id
             detail=f"Account with ID {task_in.account_id} not found",
         )
 
+    assigned_user_id = task_in.assigned_to_id or account.account_owner_id
+    initial_status = task_in.task_status or "Unassigned"
+    if initial_status == "Unassigned" and assigned_user_id:
+        initial_status = "Assigned"
+
     task = AccountTask(
         company_id=2,
         module_name=task_in.module_name or "Account",
@@ -64,8 +70,8 @@ def create_account_task(db: Session, task_in: AccountTaskCreate, current_user_id
         task_description=task_in.task_description or "",
         task_assigned_date_time=task_in.task_assigned_date_time or datetime.now(timezone.utc),
         task_due_date_time=task_in.task_due_date_time,
-        task_status=task_in.task_status or "Unassigned",
-        assigned_to_id=task_in.assigned_to_id or account.account_owner_id,
+        task_status=initial_status,
+        assigned_to_id=assigned_user_id,
         created_by_id=current_user_id,
         modified_by_id=current_user_id,
     )
@@ -166,6 +172,8 @@ def get_account_tasks(
     cb_date_condition: Optional[str] = None,
     cb_from_date: Optional[str] = None,
     cb_to_date: Optional[str] = None,
+    user_id: Optional[int] = None,
+    user_role: Optional[str] = None,
 ):
     query = db.query(AccountTask).options(
         joinedload(AccountTask.account).joinedload(Account.owner),
@@ -175,26 +183,102 @@ def get_account_tasks(
     effective_cb_date = cb_date_condition or (call_back_status if call_back_status != "all" else None)
     effective_cb_cond = cb_condition or "Is"
 
+    bypass_ids = getattr(MANAGERID, "BYPASS_USER_IDS", set())
+    is_non_admin = bool(
+        user_role and str(user_role).lower() not in ("super_admin", "admin") and (user_id is None or int(user_id) not in bypass_ids)
+    )
+
     needs_account_join = bool(
         account_owner_id or source_type or account_stage or business_status or waba_interested or is_priority_account
-        or effective_cb_cond or cb_users or effective_cb_date or cb_from_date or cb_to_date or search
+        or effective_cb_cond or cb_users or effective_cb_date or cb_from_date or cb_to_date or search or is_non_admin
     )
 
     if needs_account_join:
         query = query.join(AccountTask.account)
 
+    # Role-based visibility filtering
+    if user_id is not None and user_role:
+        uid = int(user_id)
+        role = str(user_role).lower()
+        if role in ("super_admin", "admin") or uid in bypass_ids:
+            pass
+        elif role == "manager":
+            mgr_map = getattr(MANAGERID, "MANAGER_EXECUTIVES_MAP", {})
+            if not mgr_map and callable(MANAGERID):
+                try:
+                    mgr_map = MANAGERID().MANAGER_EXECUTIVES_MAP
+                except Exception:
+                    pass
+            allowed_ids = [uid] + [int(x) for x in mgr_map.get(uid, []) if str(x).isdigit()]
+            query = query.filter(
+                or_(
+                    Account.account_owner_id.in_(allowed_ids),
+                    AccountTask.assigned_to_id.in_(allowed_ids),
+                    AccountTask.created_by_id.in_(allowed_ids),
+                )
+            )
+        else:
+            query = query.filter(
+                or_(
+                    Account.account_owner_id == uid,
+                    AccountTask.assigned_to_id == uid,
+                    AccountTask.created_by_id == uid,
+                )
+            )
+
     if account_id:
         query = query.filter(AccountTask.account_id == account_id)
-    if task_status:
-        query = query.filter(AccountTask.task_status == task_status)
+    if task_status and task_status.lower() != "all":
+        if task_status == "Overdue":
+            now_utc = datetime.now(timezone.utc)
+            query = query.filter(
+                or_(
+                    AccountTask.task_status == "Overdue",
+                    and_(
+                        AccountTask.task_due_date_time.isnot(None),
+                        AccountTask.task_due_date_time < now_utc,
+                        AccountTask.task_status.not_in(["Completed", "Verified"]),
+                    ),
+                )
+            )
+        elif task_status == "Assigned":
+            query = query.filter(
+                or_(
+                    AccountTask.task_status == "Assigned",
+                    and_(
+                        AccountTask.task_status == "Unassigned",
+                        AccountTask.assigned_to_id.isnot(None),
+                    ),
+                )
+            )
+        else:
+            query = query.filter(AccountTask.task_status == task_status)
     if task_type:
         query = query.filter(AccountTask.task_type == task_type)
     if assigned_to_id:
         query = query.filter(AccountTask.assigned_to_id == assigned_to_id)
     if account_owner_id:
-        owner_ids = [int(u) for u in (account_owner_id if isinstance(account_owner_id, list) else [account_owner_id]) if str(u).isdigit()]
+        if isinstance(account_owner_id, (str, int)):
+            raw_ids = [account_owner_id]
+        elif isinstance(account_owner_id, list):
+            raw_ids = account_owner_id
+        else:
+            raw_ids = []
+
+        owner_ids = []
+        for item in raw_ids:
+            if isinstance(item, str) and "," in item:
+                owner_ids.extend([int(x.strip()) for x in item.split(",") if x.strip().isdigit()])
+            elif str(item).isdigit():
+                owner_ids.append(int(item))
+
         if owner_ids:
-            query = query.filter(Account.account_owner_id.in_(owner_ids))
+            query = query.filter(
+                or_(
+                    Account.account_owner_id.in_(owner_ids),
+                    AccountTask.assigned_to_id.in_(owner_ids),
+                )
+            )
     if search:
         query = query.filter(
             or_(
@@ -298,7 +382,48 @@ def get_account_tasks(
         },
     }
 
-def get_account_task_by_id(db: Session, task_id: int, mongodb: Optional[Any] = None):
+def check_task_access(task: AccountTask, user_id: Optional[int], user_role: Optional[str]):
+    if not user_id or not user_role:
+        return
+    uid = int(user_id)
+    role = str(user_role).lower()
+    bypass_ids = getattr(MANAGERID, "BYPASS_USER_IDS", set())
+    if role in ("super_admin", "admin") or uid in bypass_ids:
+        return
+
+    allowed_ids = []
+    if role == "manager":
+        mgr_map = getattr(MANAGERID, "MANAGER_EXECUTIVES_MAP", {})
+        if not mgr_map and callable(MANAGERID):
+            try:
+                mgr_map = MANAGERID().MANAGER_EXECUTIVES_MAP
+            except Exception:
+                pass
+        allowed_ids = [uid] + [int(x) for x in mgr_map.get(uid, []) if str(x).isdigit()]
+    else:
+        allowed_ids = [uid]
+
+    acc_owner_id = task.account.account_owner_id if task.account else None
+    assigned_id = task.assigned_to_id
+    created_id = task.created_by_id
+
+    if (
+        acc_owner_id not in allowed_ids
+        and assigned_id not in allowed_ids
+        and created_id not in allowed_ids
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this account task",
+        )
+
+def get_account_task_by_id(
+    db: Session,
+    task_id: int,
+    mongodb: Optional[Any] = None,
+    user_id: Optional[int] = None,
+    user_role: Optional[str] = None,
+):
     task = db.query(AccountTask).options(
         joinedload(AccountTask.account).joinedload(Account.owner),
         joinedload(AccountTask.assigned_to)
@@ -313,6 +438,8 @@ def get_account_task_by_id(db: Session, task_id: int, mongodb: Optional[Any] = N
             detail=f"Account Task with ID {task_id} not found",
         )
     
+    check_task_access(task, user_id, user_role)
+
     task_dict = task_to_dict(task)
     if mongodb is not None:
         try:
@@ -329,8 +456,16 @@ def get_account_task_by_id(db: Session, task_id: int, mongodb: Optional[Any] = N
 
     return task_dict
 
-def update_account_task(db: Session, task_id: int, task_in: AccountTaskUpdate, current_user_id: int):
-    task = db.query(AccountTask).filter(
+def update_account_task(
+    db: Session,
+    task_id: int,
+    task_in: AccountTaskUpdate,
+    current_user_id: int,
+    user_role: Optional[str] = None,
+):
+    task = db.query(AccountTask).options(
+        joinedload(AccountTask.account)
+    ).filter(
         AccountTask.id == task_id,
         AccountTask.company_id == 2
     ).first()
@@ -340,9 +475,35 @@ def update_account_task(db: Session, task_id: int, task_in: AccountTaskUpdate, c
             detail=f"Account Task with ID {task_id} not found",
         )
 
+    check_task_access(task, current_user_id, user_role)
+
     update_data = task_in.model_dump(exclude_unset=True)
+
+    # Executive field update restriction: Executives can only mark tasks as completed
+    role = str(user_role).lower() if user_role else ""
+    bypass_ids = getattr(MANAGERID, "BYPASS_USER_IDS", set())
+    if role not in ("super_admin", "admin", "manager") and current_user_id not in bypass_ids:
+        non_status_changes = [k for k in update_data.keys() if k != "task_status"]
+        if non_status_changes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Executives are only permitted to mark tasks as completed.",
+            )
+
+    # Account Owner restriction for marking task as completed
+    new_requested_status = update_data.get("task_status")
+    if new_requested_status == "Completed" and task.task_status != "Completed":
+        acc_owner_id = task.account.account_owner_id if task.account else None
+        if not acc_owner_id or str(current_user_id) != str(acc_owner_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the Account Owner can mark this task as completed.",
+            )
+
+    old_status = task.task_status
     for field, val in update_data.items():
         setattr(task, field, val)
+    new_status = task.task_status
 
     task.modified_by_id = current_user_id
     task.updated_at = datetime.now(timezone.utc)
@@ -351,10 +512,18 @@ def update_account_task(db: Session, task_id: int, task_in: AccountTaskUpdate, c
     db.commit()
     db.refresh(task)
 
+    if old_status == "Unassigned" and new_status != "Unassigned":
+        from src.controllers.Background_threads import BackgroundThreadPool
+        from src.controllers.mail import notify_task_unassigned_status_change
+
+        BackgroundThreadPool.execute_task(
+            notify_task_unassigned_status_change, task.id, old_status, new_status
+        )
+
     log_action(
         db,
         current_user_id,
-        "USER",
+        user_role or "USER",
         "UPDATED",
         "AccountTask",
         task.id,
@@ -363,8 +532,89 @@ def update_account_task(db: Session, task_id: int, task_in: AccountTaskUpdate, c
 
     return task_to_dict(task)
 
-def delete_account_task(db: Session, task_id: int, current_user_id: int):
-    task = db.query(AccountTask).filter(
+def bulk_update_task_status(
+    db: Session,
+    task_ids: List[int],
+    new_status: str,
+    current_user_id: int,
+    current_role: Optional[str] = None,
+):
+    tasks = (
+        db.query(AccountTask)
+        .options(joinedload(AccountTask.account))
+        .filter(
+            AccountTask.id.in_(task_ids),
+            AccountTask.company_id == 2,
+        )
+        .all()
+    )
+
+    if not tasks:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No matching account tasks found",
+        )
+
+    # Permission check: Mass update of task status is available ONLY to the task creator
+    role = str(current_role).lower() if current_role else ""
+    bypass_ids = getattr(MANAGERID, "BYPASS_USER_IDS", set())
+    if role not in ("super_admin", "admin") and (
+        current_user_id not in bypass_ids if current_user_id else True
+    ):
+        unauthorized_tasks = [t.id for t in tasks if str(t.created_by_id) != str(current_user_id)]
+        if unauthorized_tasks:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Mass update task status is allowed only for tasks created by you. (Unauthorized for task IDs: {unauthorized_tasks})",
+            )
+
+    # Permission check: Only Account Owner can mark tasks as completed
+    if new_status == "Completed":
+        unauthorized_completion = [
+            t.id
+            for t in tasks
+            if not t.account or str(t.account.account_owner_id) != str(current_user_id)
+        ]
+        if unauthorized_completion:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Only the Account Owner can mark tasks as completed. (Unauthorized for task IDs: {unauthorized_completion})",
+            )
+
+    updated_count = 0
+    from src.controllers.Background_threads import BackgroundThreadPool
+    from src.controllers.mail import notify_task_unassigned_status_change
+
+    for task in tasks:
+        old_status = task.task_status
+        if old_status != new_status:
+            task.task_status = new_status
+            task.modified_by_id = current_user_id
+            task.updated_at = datetime.now(timezone.utc)
+            db.add(task)
+            updated_count += 1
+
+            if old_status == "Unassigned" and new_status != "Unassigned":
+                BackgroundThreadPool.execute_task(
+                    notify_task_unassigned_status_change, task.id, old_status, new_status
+                )
+
+    db.commit()
+
+    return {
+        "message": f"Successfully updated {updated_count} account tasks to '{new_status}'",
+        "updated_count": updated_count,
+    }
+
+def delete_account_task(
+    db: Session,
+    task_id: int,
+    current_user_id: int,
+    user_role: Optional[str] = None,
+):
+    task = db.query(AccountTask).options(
+        joinedload(AccountTask.account)
+    ).filter(
         AccountTask.id == task_id,
         AccountTask.company_id == 2
     ).first()
@@ -374,13 +624,15 @@ def delete_account_task(db: Session, task_id: int, current_user_id: int):
             detail=f"Account Task with ID {task_id} not found",
         )
 
+    check_task_access(task, current_user_id, user_role)
+
     db.delete(task)
     db.commit()
 
     log_action(
         db,
         current_user_id,
-        "USER",
+        user_role or "USER",
         "DELETED",
         "AccountTask",
         task_id,

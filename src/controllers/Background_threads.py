@@ -11,14 +11,13 @@ class BackgroundThreadPool:
         else:
             raise RuntimeError('BackgroundThreadPool is already initialized')
     @classmethod
-    def execute_task(cls,func,*args,**kwargs):
+    def execute_task(cls, func, *args, **kwargs):
         try:
             if cls.thread_pool is None:
-                raise RuntimeError('BackgroundThreadPool not initialized')
-            else:
-                 future = cls.thread_pool.submit(func,*args,**kwargs)
-                 print("Task is successfully executed")
-                 return future
+                cls.initialize_thread_pool()
+            future = cls.thread_pool.submit(func, *args, **kwargs)
+            print("Task is successfully executed")
+            return future
         except Exception as e:
             raise e
     @classmethod
