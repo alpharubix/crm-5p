@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 import math
@@ -16,7 +17,11 @@ from src.controllers.auth import MANAGERID
 
 IST = ZoneInfo("Asia/Kolkata")
 
-def task_to_dict(task: AccountTask) -> Dict[str, Any]:
+def task_to_dict(
+    task: AccountTask,
+    db: Session | None = None,
+    users_map: Dict[str, str] | None = None,
+) -> Dict[str, Any]:
     effective_status = task.computed_task_status
     
     assigned_id = task.assigned_to_id or task.account_owner_id
@@ -25,6 +30,34 @@ def task_to_dict(task: AccountTask) -> Dict[str, Any]:
         assigned_name = task.assigned_to.full_name or task.assigned_to.email
     elif task.account and task.account.owner:
         assigned_name = task.account.owner.full_name or task.account.owner.email
+
+    created_by_name = None
+    if task.created_by:
+        created_by_name = task.created_by.full_name or task.created_by.email
+
+    if not created_by_name and task.created_by_id:
+        c_str = str(task.created_by_id)
+        if users_map and c_str in users_map:
+            created_by_name = users_map[c_str]
+        elif db:
+            try:
+                u = db.query(User).filter(or_(User.id == int(task.created_by_id), User.zuid == c_str)).first()
+                if u:
+                    created_by_name = u.full_name or u.email
+            except Exception:
+                pass
+
+    if not assigned_name and assigned_id:
+        a_str = str(assigned_id)
+        if users_map and a_str in users_map:
+            assigned_name = users_map[a_str]
+        elif db:
+            try:
+                u = db.query(User).filter(or_(User.id == int(assigned_id), User.zuid == a_str)).first()
+                if u:
+                    assigned_name = u.full_name or u.email
+            except Exception:
+                pass
 
     return {
         "id": task.id,
@@ -44,6 +77,7 @@ def task_to_dict(task: AccountTask) -> Dict[str, Any]:
         "assigned_to_id": assigned_id,
         "assigned_to_name": assigned_name,
         "created_by_id": task.created_by_id,
+        "created_by_name": created_by_name,
         "modified_by_id": task.modified_by_id,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
@@ -84,7 +118,7 @@ def create_account_task(db: Session, task_in: AccountTaskCreate, current_user_id
         {"account_id": task.account_id, "task_type": task.task_type, "task_status": task.task_status},
     )
 
-    return task_to_dict(task)
+    return task_to_dict(task, db=db)
 
 def bulk_create_account_tasks(db: Session, bulk_in: BulkAccountTaskCreate, current_user_id: int):
     if not bulk_in.account_ids:
@@ -167,12 +201,16 @@ def get_account_tasks(
     cb_date_condition: Optional[str] = None,
     cb_from_date: Optional[str] = None,
     cb_to_date: Optional[str] = None,
+    assigned_date_condition: Optional[str] = None,
+    assigned_from_date: Optional[str] = None,
+    assigned_to_date: Optional[str] = None,
     user_id: Optional[int] = None,
     user_role: Optional[str] = None,
 ):
     query = db.query(AccountTask).options(
         joinedload(AccountTask.account).joinedload(Account.owner),
-        joinedload(AccountTask.assigned_to)
+        joinedload(AccountTask.assigned_to),
+        joinedload(AccountTask.created_by)
     ).filter(AccountTask.company_id == 2)
 
     effective_cb_date = cb_date_condition or (call_back_status if call_back_status != "all" else None)
@@ -233,16 +271,6 @@ def get_account_tasks(
                         AccountTask.task_due_date_time.isnot(None),
                         AccountTask.task_due_date_time < now_utc,
                         AccountTask.task_status.not_in(["Completed", "Verified"]),
-                    ),
-                )
-            )
-        elif task_status == "Assigned":
-            query = query.filter(
-                or_(
-                    AccountTask.task_status == "Assigned",
-                    and_(
-                        AccountTask.task_status == "Unassigned",
-                        AccountTask.assigned_to_id.isnot(None),
                     ),
                 )
             )
@@ -347,6 +375,22 @@ def get_account_tasks(
         else:
             query = query.filter(combined_clause)
 
+    # Assigned Date Filter Section (IST calculations)
+    if assigned_from_date or assigned_to_date:
+        try:
+            if assigned_from_date and assigned_to_date:
+                f_dt = datetime.strptime(assigned_from_date, "%Y-%m-%d").replace(tzinfo=IST)
+                t_dt = datetime.strptime(assigned_to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=IST)
+                query = query.filter(AccountTask.task_assigned_date_time.between(f_dt, t_dt))
+            elif assigned_from_date:
+                f_dt = datetime.strptime(assigned_from_date, "%Y-%m-%d").replace(tzinfo=IST)
+                query = query.filter(AccountTask.task_assigned_date_time >= f_dt)
+            elif assigned_to_date:
+                t_dt = datetime.strptime(assigned_to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=IST)
+                query = query.filter(AccountTask.task_assigned_date_time <= t_dt)
+        except Exception:
+            pass
+
     total_records = query.count()
     total_pages = math.ceil(total_records / page_size) if page_size > 0 else 1
 
@@ -355,6 +399,15 @@ def get_account_tasks(
 
     results = []
     now = datetime.now(timezone.utc)
+
+    all_users = db.query(User).all()
+    users_map = {}
+    for u in all_users:
+        u_name = u.full_name or u.email
+        if u.id:
+            users_map[str(u.id)] = u_name
+        if getattr(u, "zuid", None):
+            users_map[str(u.zuid)] = u_name
 
     for task in tasks:
         if task.task_due_date_time and task.task_status not in ["Completed", "Verified"]:
@@ -366,7 +419,7 @@ def get_account_tasks(
                 db.add(task)
                 db.commit()
 
-        results.append(task_to_dict(task))
+        results.append(task_to_dict(task, db=db, users_map=users_map))
 
     return {
         "data": results,
@@ -435,7 +488,7 @@ def get_account_task_by_id(
     
     check_task_access(task, user_id, user_role)
 
-    task_dict = task_to_dict(task)
+    task_dict = task_to_dict(task, db=db)
     if mongodb is not None:
         try:
             notes = get_notes(
@@ -528,7 +581,7 @@ def update_account_task(
         update_data,
     )
 
-    return task_to_dict(task)
+    return task_to_dict(task, db=db)
 
 def bulk_update_task_status(
     db: Session,
