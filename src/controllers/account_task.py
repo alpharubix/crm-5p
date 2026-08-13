@@ -29,7 +29,15 @@ def task_to_dict(
 ) -> dict[str, Any]:
     effective_status = task.computed_task_status
 
-    assigned_id = task.assigned_to_id or task.account_owner_id
+    acc_owner_id = task.account_owner_id
+    if not acc_owner_id and task.account:
+        acc_owner_id = task.account.account_owner_id
+
+    acc_owner_name = task.account_owner
+    if not acc_owner_name and task.account and task.account.owner:
+        acc_owner_name = task.account.owner.full_name or task.account.owner.email
+
+    assigned_id = task.assigned_to_id or acc_owner_id
     assigned_name = None
     if task.assigned_to:
         assigned_name = task.assigned_to.full_name or task.assigned_to.email
@@ -76,9 +84,9 @@ def task_to_dict(
         "id": task.id,
         "module_name": task.module_name or "Account",
         "account_id": task.account_id,
-        "account_name": task.account_name,
-        "account_owner": task.account_owner,
-        "account_owner_id": task.account_owner_id,
+        "account_name": task.account_name or (task.account.account_name if task.account else None),
+        "account_owner": acc_owner_name,
+        "account_owner_id": str(acc_owner_id) if acc_owner_id is not None else None,
         "account_status": task.account_status,
         "account_stage": task.account_stage,
         "call_back_date_status": task.call_back_date_status,
@@ -119,6 +127,7 @@ def create_account_task(db: Session, task_in: AccountTaskCreate, current_user_id
         company_id=2,
         module_name=task_in.module_name or "Account",
         account_id=account.id,
+        account_owner_id=account.account_owner_id,
         task_type=task_in.task_type,
         task_description=task_in.task_description or "",
         task_assigned_date_time=task_in.task_assigned_date_time,
@@ -194,6 +203,7 @@ def bulk_create_account_tasks(
             company_id=2,
             module_name="Account",
             account_id=account.id,
+            account_owner_id=account.account_owner_id,
             task_type="Update Record",
             task_description=bulk_in.task_description or "",
             task_assigned_date_time=assigned_dt,
