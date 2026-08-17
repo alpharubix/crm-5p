@@ -75,11 +75,12 @@ def get_support_ticket_history(
 
         user_role_str = str(getattr(request.state, "role", "user")).lower().replace(" ", "_")
 
+        company_filter = (SupportTicket.company_id == 2)
         # Managers, Admins, Super Admins can see all tickets, regular users see their own
         if user_role_str in ["admin", "superadmin", "super_admin", "manager"]:
-            tickets = db.query(SupportTicket).options(joinedload(SupportTicket.user)).order_by(SupportTicket.id.desc()).all()
+            tickets = db.query(SupportTicket).options(joinedload(SupportTicket.user)).filter(company_filter).order_by(SupportTicket.id.desc()).all()
         else:
-            tickets = db.query(SupportTicket).options(joinedload(SupportTicket.user)).filter(SupportTicket.user_id == user_id).order_by(SupportTicket.id.desc()).all()
+            tickets = db.query(SupportTicket).options(joinedload(SupportTicket.user)).filter(company_filter, SupportTicket.user_id == user_id).order_by(SupportTicket.id.desc()).all()
 
         formatted_tickets = []
         for t in tickets:
