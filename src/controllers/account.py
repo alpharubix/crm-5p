@@ -2,12 +2,11 @@ import csv
 import io
 import logging
 import math
-from datetime import UTC, datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
-from typing import Any, Optional, List
 
 IST = ZoneInfo("Asia/Kolkata")
-
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 from pymongo.synchronous.collection import Collection
@@ -15,6 +14,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.sql import func
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -26,7 +26,7 @@ from src.models.revenue import Revenue
 from src.models.ticket import Ticket
 from src.utility.utils import get_account_headers
 
-from ..models.account import Account
+from ..models.account import Account, AccountStatusHistory
 from ..models.user import User
 from ..schemas.account import AccountBase
 
@@ -51,13 +51,19 @@ def create_account(
     db.add(new_account)
     db.flush()
 
-    # history = AccountStatusHistory(
-    #     account_id=new_account.id,
-    #     old_status=None,
-    #     new_status=new_account.account_status,
-    #     changed_by=user_id,
-    # )
-    # db.add(history)
+    init_status = new_account.account_status or "Not set"
+    now_time = datetime.now(UTC)
+    init_history = AccountStatusHistory(
+        account_id=new_account.id,
+        company_id=new_account.company_id or 2,
+        status=init_status,
+        start_time=now_time,
+        end_time=None,
+        duration_seconds=None,
+        total_time_stayed=None,
+        moved_by_id=user_id,
+    )
+    db.add(init_history)
     db.commit()
     db.refresh(new_account)
 
@@ -132,7 +138,7 @@ def update_account(
         "applicant_residence_address",
         "co_applicant_residence_address",
         "customer_references",
-        "customer_salary_details",   # salary info for Salaried profile_type
+        "customer_salary_details",  # salary info for Salaried profile_type
     ]
 
     for key, value in payload.items():
@@ -145,9 +151,7 @@ def update_account(
                         value = datetime.fromisoformat(value)
                         if value.tzinfo is None:
                             value = value.replace(tzinfo=UTC)
-                        if key == "call_back_date_time" and value < datetime.now(
-                            UTC
-                        ):
+                        if key == "call_back_date_time" and value < datetime.now(UTC):
                             raise HTTPException(
                                 status_code=400,
                                 detail={"message": "Date should not be in the past"},
@@ -180,17 +184,40 @@ def update_account(
 
     db_account.custom_fields = custom_fields_dict
     flag_modified(db_account, "custom_fields")
-    # db_account.modified_by_id = user_id
 
-    # new_status = db_account.account_status
-    # if new_status != old_status:
-    #     history = AccountStatusHistory(
-    #         account_id=account_id,
-    #         old_status=old_status,
-    #         new_status=new_status,
-    #         changed_by=user_id,
-    #     )
-    #     db.add(history)
+    new_status = db_account.account_status
+    if new_status and new_status != old_status:
+        now_time = datetime.now(UTC)
+        active_rec = (
+            db.query(AccountStatusHistory)
+            .filter(
+                AccountStatusHistory.account_id == account_id,
+                AccountStatusHistory.end_time.is_(None),
+            )
+            .order_by(AccountStatusHistory.start_time.desc())
+            .first()
+        )
+        if active_rec:
+            active_rec.end_time = now_time
+            start_dt = active_rec.start_time
+            if start_dt and start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=UTC)
+            dur_secs = int((now_time - start_dt).total_seconds()) if start_dt else 0
+            dur_secs = max(dur_secs, 0)
+            active_rec.duration_seconds = dur_secs
+            active_rec.total_time_stayed = format_duration_long(dur_secs)
+
+        new_rec = AccountStatusHistory(
+            account_id=account_id,
+            company_id=db_account.company_id or 2,
+            status=new_status,
+            start_time=now_time,
+            end_time=None,
+            duration_seconds=None,
+            total_time_stayed=None,
+            moved_by_id=user_id,
+        )
+        db.add(new_rec)
 
     if account_name_changed and new_account_name:
         from src.models.deal import Deal
@@ -243,6 +270,121 @@ def update_account(
         raise HTTPException(status_code=400, detail=f"Database error: {e!s}")
 
 
+def get_status_color(status_name: str) -> str:
+    if not status_name:
+        return "blue"
+    status_lower = status_name.lower()
+    if "awareness" in status_lower:
+        return "purple"
+    elif "attention" in status_lower:
+        return "blue"
+    elif "assessment" in status_lower:
+        return "emerald"
+    elif "lender" in status_lower:
+        return "amber"
+    elif "not interested" in status_lower:
+        return "rose"
+    elif "unserviceable" in status_lower:
+        return "purple"
+    elif "wrong" in status_lower:
+        return "emerald"
+    elif "established" in status_lower and "not" not in status_lower:
+        return "amber"
+    elif "not established" in status_lower:
+        return "rose"
+    return "blue"
+
+
+def format_duration_short(seconds: int) -> str:
+    if not seconds or seconds < 0:
+        return "0m"
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    minutes = (seconds % 3600) // 60
+
+    if days > 0:
+        return f"{days}d"
+    elif hours > 0:
+        return f"{hours}h"
+    else:
+        return f"{minutes}m"
+
+
+def format_duration_long(seconds: int) -> str:
+    if not seconds or seconds < 0:
+        return "0 mins"
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    minutes = (seconds % 3600) // 60
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days} day{'s' if days > 1 else ''}")
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours > 1 else ''}")
+    if minutes > 0 or not parts:
+        parts.append(f"{minutes} min{'s' if minutes > 1 else ''}")
+    return ", ".join(parts)
+
+
+def build_batch_status_journeys(db: Session, account_ids: list[int]):
+    if not account_ids:
+        return {}
+    now_dt = datetime.now(UTC)
+    history_records = (
+        db.query(AccountStatusHistory)
+        .filter(AccountStatusHistory.account_id.in_(account_ids))
+        .options(selectinload(AccountStatusHistory.moved_by_user))
+        .order_by(AccountStatusHistory.start_time.asc())
+        .all()
+    )
+
+    journeys_by_account = {acc_id: [] for acc_id in account_ids}
+    for rec in history_records:
+        user_name = "System"
+        if rec.moved_by_user:
+            user_name = (
+                rec.moved_by_user.full_name or rec.moved_by_user.email or "System"
+            )
+
+        start_time_dt = rec.start_time
+        if start_time_dt and start_time_dt.tzinfo is None:
+            start_time_dt = start_time_dt.replace(tzinfo=UTC)
+
+        start_date_str = start_time_dt.strftime("%Y-%m-%d") if start_time_dt else ""
+
+        if rec.end_time:
+            end_time_dt = rec.end_time
+            if end_time_dt and end_time_dt.tzinfo is None:
+                end_time_dt = end_time_dt.replace(tzinfo=UTC)
+            end_date_str = end_time_dt.strftime("%Y-%m-%d") if end_time_dt else ""
+            dur_secs = rec.duration_seconds or (
+                int((end_time_dt - start_time_dt).total_seconds())
+                if end_time_dt and start_time_dt
+                else 0
+            )
+        else:
+            end_date_str = "Present"
+            dur_secs = (
+                int((now_dt - start_time_dt).total_seconds()) if start_time_dt else 0
+            )
+
+        dur_secs = max(dur_secs, 0)
+
+        item = {
+            "name": rec.status,
+            "duration": format_duration_short(dur_secs),
+            "color": get_status_color(rec.status),
+            "startDate": start_date_str,
+            "endDate": end_date_str,
+            "updatedBy": user_name,
+        }
+        if rec.account_id in journeys_by_account:
+            journeys_by_account[rec.account_id].append(item)
+
+    return journeys_by_account
+
+
 def get_all_accounts(
     request: Request,
     db: Session,
@@ -270,17 +412,80 @@ def get_all_accounts(
     cb_date_condition: str | None = None,
     cb_from_date: str | None = None,
     cb_to_date: str | None = None,
+    status_filter_name: str | None = None,
+    status_from_date: str | None = None,
+    status_to_date: str | None = None,
+    status_min_days: float | None = None,
 ):
     MANAGER_EXECUTIVES_MAP = MANAGERID().MANAGER_EXECUTIVES_MAP
 
     limit = 30
     offset = (page - 1) * limit
     query = db.query(Account)
-    filters = [Account.company_id == 2]
+    filters = [or_(Account.company_id == 2, Account.company_id.is_(None))]
     user_id = request.state.user_id
     role = request.state.role
     single_id_request = False
     allowed_owner_ids = None
+
+    # Status & Period Subquery Filter
+    if status_filter_name:
+        sh_query = db.query(AccountStatusHistory.account_id).filter(
+            AccountStatusHistory.status == status_filter_name
+        )
+        if status_from_date:
+            try:
+                if "T" in status_from_date:
+                    dt_from = datetime.fromisoformat(status_from_date)
+                else:
+                    dt_from = datetime.strptime(status_from_date, "%Y-%m-%d").replace(
+                        hour=0, minute=0, second=0, tzinfo=UTC
+                    )
+                sh_query = sh_query.filter(AccountStatusHistory.start_time >= dt_from)
+            except Exception:
+                pass
+        if status_to_date:
+            try:
+                if "T" in status_to_date:
+                    dt_to = datetime.fromisoformat(status_to_date)
+                else:
+                    dt_to = datetime.strptime(status_to_date, "%Y-%m-%d").replace(
+                        hour=23, minute=59, second=59, tzinfo=UTC
+                    )
+                sh_query = sh_query.filter(
+                    or_(
+                        AccountStatusHistory.end_time <= dt_to,
+                        AccountStatusHistory.end_time.is_(None),
+                    )
+                )
+            except Exception:
+                pass
+        if status_min_days and float(status_min_days) > 0:
+            min_secs = int(float(status_min_days) * 86400)
+            sh_query = sh_query.filter(
+                or_(
+                    AccountStatusHistory.duration_seconds >= min_secs,
+                    and_(
+                        AccountStatusHistory.end_time.is_(None),
+                        func.extract(
+                            "epoch", func.now() - AccountStatusHistory.start_time
+                        )
+                        >= min_secs,
+                    ),
+                )
+            )
+
+        matching_acc_ids = [r[0] for r in sh_query.distinct().all()]
+        if not matching_acc_ids:
+            return {
+                "data": [],
+                "page_info": {
+                    "page": page,
+                    "total_pages": 0,
+                    "data_size": 0,
+                },
+            }
+        filters.append(Account.id.in_(matching_acc_ids))
 
     # Role Permissions
     if role in ("super_admin", "admin"):
@@ -300,33 +505,60 @@ def get_all_accounts(
     if account_name:
         filters.append(Account.account_name.ilike(f"%{account_name.strip()}%"))
     if account_status:
-        status_list = [s.strip() for s in (account_status if isinstance(account_status, list) else [account_status]) if s and s.strip()]
+        status_list = [
+            s.strip()
+            for s in (
+                account_status if isinstance(account_status, list) else [account_status]
+            )
+            if s and s.strip()
+        ]
         if status_list:
             filters.append(
-                or_(*[Account.account_status.ilike(f"{status}%") for status in status_list])
+                or_(
+                    *[
+                        Account.account_status.ilike(f"{status}%")
+                        for status in status_list
+                    ]
+                )
             )
     if account_stage:
-        stage_list = [s.strip() for s in (account_stage if isinstance(account_stage, list) else [account_stage]) if s and s.strip()]
+        stage_list = [
+            s.strip()
+            for s in (
+                account_stage if isinstance(account_stage, list) else [account_stage]
+            )
+            if s and s.strip()
+        ]
         if stage_list:
             filters.append(Account.account_stage.in_(stage_list))
     if source:
-        source_list = [s.strip() for s in (source if isinstance(source, list) else [source]) if s and s.strip()]
+        source_list = [
+            s.strip()
+            for s in (source if isinstance(source, list) else [source])
+            if s and s.strip()
+        ]
         if source_list:
             filters.append(
                 or_(*[Account.source.ilike(f"{src}%") for src in source_list])
             )
     if source_type:
-        st_list = [s.strip() for s in (source_type if isinstance(source_type, list) else [source_type]) if s and s.strip()]
+        st_list = [
+            s.strip()
+            for s in (source_type if isinstance(source_type, list) else [source_type])
+            if s and s.strip()
+        ]
         if st_list:
             filters.append(Account.source_type.in_(st_list))
     if type_of_business:
         filters.append(Account.type_of_business == type_of_business)
     if industry:
-        industry_list = [ind.strip() for ind in (industry if isinstance(industry, list) else [industry]) if ind and ind.strip()]
+        industry_list = [
+            ind.strip()
+            for ind in (industry if isinstance(industry, list) else [industry])
+            if ind and ind.strip()
+        ]
         if industry_list:
-            filters.append(
-                or_(*[Account.industry.ilike(ind) for ind in industry_list])
-            )
+            filters.append(or_(*[Account.industry.ilike(ind) for ind in industry_list]))
     if city:
         filters.append(Account.city.ilike(f"%{city.strip()}%"))
     if state:
@@ -344,7 +576,15 @@ def get_all_accounts(
     if is_priority_account and is_priority_account != "all":
         filters.append(Account.is_priority_account == is_priority_account)
     if business_status:
-        bs_list = [s.strip() for s in (business_status if isinstance(business_status, list) else [business_status]) if s and s.strip()]
+        bs_list = [
+            s.strip()
+            for s in (
+                business_status
+                if isinstance(business_status, list)
+                else [business_status]
+            )
+            if s and s.strip()
+        ]
         if bs_list:
             filters.append(Account.business_status.in_(bs_list))
 
@@ -353,40 +593,69 @@ def get_all_accounts(
     cb_clauses = []
 
     if cb_users:
-        owner_ids = [int(u) for u in (cb_users if isinstance(cb_users, list) else [cb_users]) if str(u).isdigit()]
+        owner_ids = [
+            int(u)
+            for u in (cb_users if isinstance(cb_users, list) else [cb_users])
+            if str(u).isdigit()
+        ]
         if owner_ids:
             cb_clauses.append(Account.account_owner_id.in_(owner_ids))
 
     if cb_date_condition and cb_date_condition != "all":
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         now_ist = now_utc.astimezone(IST)
-        today_start = datetime(now_ist.year, now_ist.month, now_ist.day, 0, 0, 0, tzinfo=IST)
-        today_end = datetime(now_ist.year, now_ist.month, now_ist.day, 23, 59, 59, tzinfo=IST)
+        today_start = datetime(
+            now_ist.year, now_ist.month, now_ist.day, 0, 0, 0, tzinfo=IST
+        )
+        today_end = datetime(
+            now_ist.year, now_ist.month, now_ist.day, 23, 59, 59, tzinfo=IST
+        )
 
         if cb_date_condition == "Blank":
             cb_clauses.append(Account.call_back_date_time.is_(None))
         elif cb_date_condition == "Overdue":
-            cb_clauses.append(and_(Account.call_back_date_time.isnot(None), Account.call_back_date_time < today_start))
+            cb_clauses.append(
+                and_(
+                    Account.call_back_date_time.isnot(None),
+                    Account.call_back_date_time < today_start,
+                )
+            )
         elif cb_date_condition == "Due Today":
-            cb_clauses.append(Account.call_back_date_time.between(today_start, today_end))
+            cb_clauses.append(
+                Account.call_back_date_time.between(today_start, today_end)
+            )
         elif cb_date_condition == "Due Tomorrow":
             tomorrow_start = today_start + timedelta(days=1)
             tomorrow_end = today_end + timedelta(days=1)
-            cb_clauses.append(Account.call_back_date_time.between(tomorrow_start, tomorrow_end))
+            cb_clauses.append(
+                Account.call_back_date_time.between(tomorrow_start, tomorrow_end)
+            )
         elif cb_date_condition == "Due This Week":
             weekday = today_start.weekday()
             start_of_week = today_start - timedelta(days=weekday)
-            end_of_week = today_start + timedelta(days=(6 - weekday), hours=23, minutes=59, seconds=59)
-            cb_clauses.append(Account.call_back_date_time.between(start_of_week, end_of_week))
+            end_of_week = today_start + timedelta(
+                days=(6 - weekday), hours=23, minutes=59, seconds=59
+            )
+            cb_clauses.append(
+                Account.call_back_date_time.between(start_of_week, end_of_week)
+            )
         elif cb_date_condition == "Due Next Week":
             weekday = today_start.weekday()
             start_of_next_week = today_start + timedelta(days=(7 - weekday))
-            end_of_next_week = start_of_next_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
-            cb_clauses.append(Account.call_back_date_time.between(start_of_next_week, end_of_next_week))
+            end_of_next_week = start_of_next_week + timedelta(
+                days=6, hours=23, minutes=59, seconds=59
+            )
+            cb_clauses.append(
+                Account.call_back_date_time.between(
+                    start_of_next_week, end_of_next_week
+                )
+            )
         elif cb_date_condition == "Due Dates" and cb_from_date and cb_to_date:
             try:
                 f_dt = datetime.strptime(cb_from_date, "%Y-%m-%d").replace(tzinfo=IST)
-                t_dt = datetime.strptime(cb_to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=IST)
+                t_dt = datetime.strptime(cb_to_date, "%Y-%m-%d").replace(
+                    hour=23, minute=59, second=59, tzinfo=IST
+                )
                 cb_clauses.append(Account.call_back_date_time.between(f_dt, t_dt))
             except Exception:
                 pass
@@ -409,7 +678,15 @@ def get_all_accounts(
             )
         )
     if account_owner_id:
-        owner_ids = [int(oid) for oid in (account_owner_id if isinstance(account_owner_id, list) else [account_owner_id]) if oid is not None]
+        owner_ids = [
+            int(oid)
+            for oid in (
+                account_owner_id
+                if isinstance(account_owner_id, list)
+                else [account_owner_id]
+            )
+            if oid is not None
+        ]
         if owner_ids:
             if role in ("super_admin", "admin"):
                 filters.append(Account.account_owner_id.in_(owner_ids))
@@ -435,7 +712,7 @@ def get_all_accounts(
                 selectinload(Account.created_by),
                 selectinload(Account.account_linked_contact),
                 selectinload(Account.deals),
-                selectinload(Account.modified_by)
+                selectinload(Account.modified_by),
             )
             .limit(limit)
             .all()
@@ -444,13 +721,15 @@ def get_all_accounts(
         if len(data) != 0:
             note_pairs = []
             acc: Account = data[0]
-            
+
             # Step 1: Add Parent Account to filter
             note_pairs.append({"Parent_Id.id": str(acc.id), "module": "Accounts_5pc"})
 
             # Step 2: Collect contact pairs
             for contact in acc.account_linked_contact:
-                note_pairs.append({"Parent_Id.id": str(contact.id), "module": "Contacts_5pc"})
+                note_pairs.append(
+                    {"Parent_Id.id": str(contact.id), "module": "Contacts_5pc"}
+                )
 
             # Step 3: Collect deal IDs and pairs
             deal_ids_for_tickets = []
@@ -458,7 +737,9 @@ def get_all_accounts(
                 note_pairs.append({"Parent_Id.id": str(deal.id), "module": "Deals_5pc"})
                 deal_ids_for_tickets.append(deal.id)
                 if deal.crm_deal_id:
-                    note_pairs.append({"Parent_Id.id": str(deal.crm_deal_id), "module": "Deals_5pc"})
+                    note_pairs.append(
+                        {"Parent_Id.id": str(deal.crm_deal_id), "module": "Deals_5pc"}
+                    )
 
             # Step 4: Query tickets, documents, and revenue for deal hierarchy
             tickets_by_deal: dict[int, list] = {}
@@ -467,7 +748,12 @@ def get_all_accounts(
             revenue_list: list = []
 
             if deal_ids_for_tickets:
-                deal_map = {deal.id: getattr(deal, "deal_name", None) or getattr(deal, "account_name", None) or f"Deal #{deal.id}" for deal in acc.deals}
+                deal_map = {
+                    deal.id: getattr(deal, "deal_name", None)
+                    or getattr(deal, "account_name", None)
+                    or f"Deal #{deal.id}"
+                    for deal in acc.deals
+                }
 
                 # 4a. Tickets
                 ticket_records = (
@@ -476,7 +762,9 @@ def get_all_accounts(
                     .all()
                 )
                 for ticket in ticket_records:
-                    note_pairs.append({"Parent_Id.id": str(ticket.id), "module": "Tickets_5pc"})
+                    note_pairs.append(
+                        {"Parent_Id.id": str(ticket.id), "module": "Tickets_5pc"}
+                    )
                     t_dict = {
                         c.name: getattr(ticket, c.name)
                         for c in ticket.__table__.columns
@@ -495,8 +783,7 @@ def get_all_accounts(
                 )
                 for doc in doc_records:
                     d_dict = {
-                        c.name: getattr(doc, c.name)
-                        for c in doc.__table__.columns
+                        c.name: getattr(doc, c.name) for c in doc.__table__.columns
                     }
                     d_dict["id"] = str(d_dict["id"])
                     d_dict["deal_id"] = str(d_dict["deal_id"])
@@ -511,8 +798,7 @@ def get_all_accounts(
                 )
                 for rev in rev_records:
                     r_dict = {
-                        c.name: getattr(rev, c.name)
-                        for c in rev.__table__.columns
+                        c.name: getattr(rev, c.name) for c in rev.__table__.columns
                     }
                     r_dict["id"] = str(r_dict["id"])
                     r_dict["deal_id"] = str(r_dict["deal_id"])
@@ -529,9 +815,15 @@ def get_all_accounts(
 
             # Step 6: Fetch notes with paired filters
             acc.notes = get_notes(
-                pair_filters=note_pairs,
-                notes_collection=mongodb["Notes"]
+                pair_filters=note_pairs, notes_collection=mongodb["Notes"]
             )
+
+        acc_ids = [acc.id for acc in data if hasattr(acc, "id")]
+        journeys_map = build_batch_status_journeys(db, acc_ids)
+        for acc in data:
+            j_list = journeys_map.get(acc.id, [])
+            acc.status_journey = j_list
+            acc.journey = j_list
 
         total_pages = math.ceil(total_data_size / limit)
         return {
@@ -544,8 +836,7 @@ def get_all_accounts(
         }
 
     else:
-        # Standard list view query
-        data = (
+        rows = (
             db.query(
                 Account.id,
                 Account.account_name,
@@ -564,7 +855,7 @@ def get_all_accounts(
                 Account.source_date,
                 Account.source_type,
                 Account.assignment_date,
-                Account.modified_time
+                Account.modified_time,
             )
             .filter(and_(*filters))
             .offset(offset)
@@ -573,6 +864,18 @@ def get_all_accounts(
         )
         total_data_size = query.filter(*filters).count()
         total_pages = math.ceil(total_data_size / limit)
+
+        acc_ids = [r.id for r in rows if r.id]
+        journeys_map = build_batch_status_journeys(db, acc_ids)
+
+        data = []
+        for r in rows:
+            item_dict = dict(r._mapping)
+            j_list = journeys_map.get(r.id, [])
+            item_dict["status_journey"] = j_list
+            item_dict["journey"] = j_list
+            data.append(item_dict)
+
         return {
             "data": data,
             "page_info": {
@@ -587,7 +890,158 @@ def get_account_by_id(db: Session, account_id: int) -> Account:
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+    journeys_map = build_batch_status_journeys(db, [account.id])
+    j_list = journeys_map.get(account.id, [])
+    account.status_journey = j_list
+    account.journey = j_list
     return account
+
+
+def get_account_status_history(db: Session, account_id: int):
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    records = (
+        db.query(AccountStatusHistory)
+        .filter(AccountStatusHistory.account_id == account_id)
+        .options(selectinload(AccountStatusHistory.moved_by_user))
+        .order_by(AccountStatusHistory.start_time.asc())
+        .all()
+    )
+
+    now_dt = datetime.now(UTC)
+    result = []
+    for rec in records:
+        user_name = "System"
+        if rec.moved_by_user:
+            user_name = (
+                rec.moved_by_user.full_name or rec.moved_by_user.email or "System"
+            )
+
+        start_time_dt = rec.start_time
+        if start_time_dt and start_time_dt.tzinfo is None:
+            start_time_dt = start_time_dt.replace(tzinfo=UTC)
+
+        start_formatted = (
+            start_time_dt.strftime("%d %b %Y, %I:%M %p") if start_time_dt else ""
+        )
+        start_date_str = start_time_dt.strftime("%Y-%m-%d") if start_time_dt else ""
+
+        if rec.end_time:
+            end_time_dt = rec.end_time
+            if end_time_dt and end_time_dt.tzinfo is None:
+                end_time_dt = end_time_dt.replace(tzinfo=UTC)
+            end_formatted = end_time_dt.strftime("%d %b %Y, %I:%M %p")
+            end_date_str = end_time_dt.strftime("%Y-%m-%d")
+            dur_secs = rec.duration_seconds or (
+                int((end_time_dt - start_time_dt).total_seconds())
+                if end_time_dt and start_time_dt
+                else 0
+            )
+            is_curr = False
+        else:
+            end_formatted = "Present"
+            end_date_str = "Present"
+            dur_secs = (
+                int((now_dt - start_time_dt).total_seconds()) if start_time_dt else 0
+            )
+            is_curr = True
+
+        dur_secs = max(dur_secs, 0)
+
+        short_dur = format_duration_short(dur_secs)
+        long_dur = format_duration_long(dur_secs)
+        status_color = get_status_color(rec.status)
+
+        result.append(
+            {
+                "id": str(rec.id),
+                "account_id": str(rec.account_id),
+                "company_id": rec.company_id or 2,
+                "status": rec.status,
+                "name": rec.status,
+                "start_time": start_time_dt,
+                "start_time_formatted": start_formatted,
+                "startDate": start_date_str,
+                "end_time": rec.end_time,
+                "end_time_formatted": end_formatted,
+                "endDate": end_date_str,
+                "total_time_stayed": long_dur,
+                "duration_seconds": dur_secs,
+                "duration": short_dur,
+                "is_current": is_curr,
+                "moved_by_id": rec.moved_by_id,
+                "moved_by_name": user_name,
+                "updatedBy": user_name,
+                "color": status_color,
+            }
+        )
+
+    return result
+
+
+def get_accounts_status_journey(
+    db: Session, company_id: int = 2, page: int = 1, limit: int = 20
+):
+    offset = (page - 1) * limit
+    accounts = (
+        db.query(Account)
+        .filter(or_(Account.company_id == company_id, Account.company_id.is_(None)))
+        .options(selectinload(Account.owner))
+        .order_by(Account.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    account_ids = [acc.id for acc in accounts]
+    journeys_map = build_batch_status_journeys(db, account_ids)
+
+    result = []
+    for acc in accounts:
+        owner_name = "—"
+        if acc.owner:
+            owner_name = acc.owner.full_name or acc.owner.email or "—"
+
+        journey_items = journeys_map.get(acc.id, [])
+        result.append(
+            {
+                "id": str(acc.id),
+                "name": acc.account_name or "—",
+                "owner": owner_name,
+                "currentStatus": acc.account_status or "Not set",
+                "journey": journey_items,
+            }
+        )
+
+    return result
+
+
+def get_account_status_journey(db: Session, account_id: int):
+    acc = (
+        db.query(Account)
+        .options(selectinload(Account.owner))
+        .filter(Account.id == account_id)
+        .first()
+    )
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    owner_name = "—"
+    if acc.owner:
+        owner_name = acc.owner.full_name or acc.owner.email or "—"
+
+    journeys_map = build_batch_status_journeys(db, [acc.id])
+    journey_items = journeys_map.get(acc.id, [])
+
+    return {
+        "id": str(acc.id),
+        "name": acc.account_name or "—",
+        "owner": owner_name,
+        "currentStatus": acc.account_status or "Not set",
+        "journey": journey_items,
+    }
 
 
 # Account_Status_history i.e trackin of acc history by id
@@ -726,6 +1180,7 @@ def update_and_insert_accounts(insertion_accounts, updation_accounts, db: Sessio
 
 async def update_accounts_based_on_csv(file, db: Session, user_id: int, user_role: str):
     from datetime import date
+
     insertion_accounts, updation_accounts, error_list = [], [], []
     row_number = 1
 
@@ -830,7 +1285,7 @@ async def update_accounts_based_on_csv(file, db: Session, user_id: int, user_rol
                     if new_owner_id and int(new_owner_id) not in allowed_owner_ids:
                         raise HTTPException(
                             status_code=403,
-                            detail=f"Row {row_number}: You do not have permission to assign an account to owner ID {new_owner_id}"
+                            detail=f"Row {row_number}: You do not have permission to assign an account to owner ID {new_owner_id}",
                         )
 
                 if is_new:
@@ -839,14 +1294,20 @@ async def update_accounts_based_on_csv(file, db: Session, user_id: int, user_rol
                     row["created_by_id"] = int(user_id)
                     insertion_accounts.append(row)
                 else:
-                    existing_account = db.query(Account).filter(Account.id == row["id"]).first()
+                    existing_account = (
+                        db.query(Account).filter(Account.id == row["id"]).first()
+                    )
                     if not existing_account:
                         raise ValueError(f"Account with ID {row['id']} not found")
                     if user_role == "manager":
-                        if existing_account.account_owner_id is not None and int(existing_account.account_owner_id) not in allowed_owner_ids:
+                        if (
+                            existing_account.account_owner_id is not None
+                            and int(existing_account.account_owner_id)
+                            not in allowed_owner_ids
+                        ):
                             raise HTTPException(
                                 status_code=403,
-                                detail=f"Row {row_number}: You do not have permission to update account owned by user ID {existing_account.account_owner_id}"
+                                detail=f"Row {row_number}: You do not have permission to update account owned by user ID {existing_account.account_owner_id}",
                             )
                     # Pass the full row (including None values) so blank CSV cells
                     # explicitly clear existing DB values, as requested.
