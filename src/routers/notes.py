@@ -25,6 +25,7 @@ def create_notes(
         parent_id=body.id,
         db=collection,
         pg_db=pg_db_session,
+        notes_parent_id=body.notesParentId,
     )
 @notes_router.get("/{notes_id}")
 def notes(request: Request, notes_id: str, db: Collection = Depends(get_mongodb)):

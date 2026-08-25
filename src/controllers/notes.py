@@ -21,7 +21,7 @@ from .audit_log import log_action
 IST = ZoneInfo("Asia/Kolkata")
 
 
-def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Session):
+def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Session, notes_parent_id: str | None = None):
     try:
         user_coll = db["users"]
         notes_coll = db["Notes"]
@@ -61,30 +61,41 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 "id": str(raw_parent_ticket.id),
                 "ticket_name": raw_parent_ticket.account_name,
             }
-        elif module_name in ["Deals", "Deals_5pc"]:
-            raw_parent_deal = (
-                pg_db.query(Deal.id, Deal.account_name)
-                .filter(Deal.id == int(parent_id))
+        elif module_name in ["Job_Requirements", "Job_Requirements_5pc"]:
+            from src.models.hiring import JobRequirement
+
+            raw_parent_jr = (
+                pg_db.query(JobRequirement.id, JobRequirement.hiring_position)
+                .filter(JobRequirement.id == int(parent_id))
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_deal.id) if raw_parent_deal else str(parent_id),
-                "deal_name": raw_parent_deal.account_name
-                if raw_parent_deal
-                else "Unknown Entity",
+                "id": str(raw_parent_jr.id),
+                "job_requirement_name": raw_parent_jr.hiring_position
+                if raw_parent_jr
+                else "Unknown",
             }
-        elif module_name in [
-            "Account_Tasks",
-            "Account_Tasks_5pc",
-            "AccountTask",
-            "AccountTask_5pc",
-            "AccountTasks",
-        ]:
+        elif module_name in ["Candidates", "Candidates_5pc"]:
+            from src.models.hiring import Candidate
+
+            raw_parent_can = (
+                pg_db.query(Candidate.id, Candidate.candidate_name)
+                .filter(Candidate.id == int(parent_id))
+                .first()
+            )
+            Parent_Id = {
+                "id": str(raw_parent_can.id),
+                "candidate_name": raw_parent_can.candidate_name
+                if raw_parent_can
+                else "Unknown",
+            }
+        elif module_name in ["Account_Tasks", "AccountTasks", "AccountTask"]:
             from src.models.account_task import AccountTask
 
+            p_int = int(parent_id) if str(parent_id).isdigit() else None
             raw_parent_task = (
                 pg_db.query(AccountTask.id, AccountTask.task_type)
-                .filter(AccountTask.id == int(parent_id))
+                .filter(AccountTask.id == parent_id if p_int is None else (AccountTask.id == p_int))
                 .first()
             )
             Parent_Id = {
@@ -94,39 +105,50 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 else "Account Task",
             }
         else:
-            # Fallback if an unexpected string reaches the endpoint
             raw_parent_deal = (
-                pg_db.query(Deal.id, Deal.account_name)
+                pg_db.query(Deal.id, Deal.deal_name)
                 .filter(Deal.id == int(parent_id))
                 .first()
             )
             Parent_Id = {
                 "id": str(raw_parent_deal.id),
-                "deal_name": raw_parent_deal.account_name
+                "deal_name": raw_parent_deal.deal_name
                 if raw_parent_deal
-                else "Unknown Entity",
+                else "Unknown",
             }
-
         Modified_By = None
-        Created_By = user_coll.find_one(
-            {"id": str(user_id)}, {"_id": 0, "id": 1, "first_name": 1, "email": 1}
+        Created_By = (
+            {"id": Owner["id"], "name": Owner["first_name"], "email": Owner["email"]}
+            if Owner
+            else None
         )
-        if Created_By and "first_name" in Created_By:
-            Created_By["name"] = Created_By.pop("first_name")
 
-        result = notes_coll.insert_one(
-            {
-                "Owner": Owner,
-                "Created_By": Created_By,
-                "Modified_By": Modified_By,
-                "Note_Content": note,
-                "Parent_Id": Parent_Id,
-                "module": module_name,  # Preserves the original variant token string ('Accounts_5pc' etc)
-                "Created_Time": datetime.now(UTC).isoformat(),
-                "Modified_Time": datetime.now(UTC).isoformat(),
-            }
-        )
+        now_iso = datetime.now(UTC).isoformat()
+        note_doc = {
+            "Owner": Owner,
+            "Created_By": Created_By,
+            "Modified_By": Modified_By,
+            "Note_Content": note,
+            "Parent_Id": Parent_Id,
+            "module": module_name,
+            "notesParentId": notes_parent_id,
+            "Created_Time": now_iso,
+            "Modified_Time": now_iso,
+        }
+
+        result = notes_coll.insert_one(note_doc)
         print("Insertion result", result)
+
+        inserted_id = str(result.inserted_id)
+        note_doc["_id"] = inserted_id
+
+        # Format Created_Time / Modified_Time to readable string for response consistency
+        try:
+            dt = datetime.fromisoformat(now_iso).astimezone(IST)
+            note_doc["Created_Time"] = dt.strftime("%d %b %Y, %I:%M %p")
+            note_doc["Modified_Time"] = dt.strftime("%d %b %Y, %I:%M %p")
+        except Exception:
+            pass
 
         log_action(
             pg_db,
@@ -135,18 +157,28 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
             "CREATED",
             "Note",
             int(parent_id),
-            {"note": note, "parent_id": parent_id},
+            {"note": note, "parent_id": parent_id, "notesParentId": notes_parent_id},
         )
 
+        creator_name = (
+            Owner.get("first_name")
+            if (Owner and Owner.get("first_name"))
+            else "A CRM User"
+        )
         BackgroundThreadPool.execute_task(
             mentions,
             note,
             module_name,
             parent_id,
+            creator_name,
         )
 
         return JSONResponse(
-            status_code=201, content={"message": "Note saved successfully"}
+            status_code=201,
+            content={
+                "message": "Note saved successfully",
+                "data": note_doc,
+            },
         )
     except Exception as e:
         print(e)
@@ -183,7 +215,8 @@ def get_notes(
             return []
 
         projection = {
-            "_id": 0,
+            "_id": 1,
+            "id": 1,
             "Owner": 1,
             "Note_Content": 1,
             "Parent_Id": 1,
@@ -192,6 +225,7 @@ def get_notes(
             "Created_Time": 1,
             "Modified_Time": 1,
             "module": 1,
+            "notesParentId": 1,
         }
 
         notes_cursor = notes_collection.find(filter_query, projection).sort(
@@ -199,6 +233,11 @@ def get_notes(
         )
         notes = []
         for note in notes_cursor:
+            if "_id" in note:
+                note["_id"] = str(note["_id"])
+            if "notesParentId" not in note:
+                note["notesParentId"] = None
+
             # Time formatting
             for time_key in ["Created_Time", "Modified_Time"]:
                 if note.get(time_key):
@@ -253,7 +292,7 @@ def is_note_has_comment(note_text: str) -> bool:
     return bool(pattern.search(note_text))
 
 
-def mentions(note, module_name, parent_id):
+def mentions(note, module_name, parent_id, creator_name: str = "A CRM User"):
     try:  # check if the note_content have mentions in them
         is_note_there = is_note_has_comment(note)
         if is_note_there:  # mention is there in the comment
@@ -270,7 +309,9 @@ def mentions(note, module_name, parent_id):
             for user in users:
                 email_list.append(
                     {
-                        "user_name": user.full_name,
+                        "recipient_name": user.full_name,
+                        "creator_name": creator_name,
+                        "user_name": creator_name,
                         "user_email_address": user.email,
                         "module": module_name,
                         "entity_id": parent_id,
