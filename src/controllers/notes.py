@@ -23,13 +23,84 @@ IST = ZoneInfo("Asia/Kolkata")
 
 def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Session, notes_parent_id: str | None = None):
     try:
-        user_coll = db["users"]
         notes_coll = db["Notes"]
-        Owner = user_coll.find_one(
-            {"id": str(user_id)}, {"_id": 0, "id": 1, "first_name": 1, "email": 1}
-        )
 
-        # FIXED: Explicitly handle both standard modules and 5pc module extensions
+        # Multi-strategy User / Owner lookup
+        owner_name = None
+        owner_email = None
+        owner_id_str = str(user_id) if user_id is not None else "unknown"
+
+        # 1. Try PostgreSQL DB (User model)
+        if pg_db and user_id is not None:
+            try:
+                user_id_int = int(user_id) if str(user_id).isdigit() else None
+                pg_user = None
+                if user_id_int is not None:
+                    pg_user = pg_db.query(User).filter(User.id == user_id_int).first()
+                if not pg_user:
+                    pg_user = pg_db.query(User).filter(User.zuid == str(user_id)).first()
+                if pg_user:
+                    owner_name = pg_user.full_name
+                    owner_email = pg_user.email
+                    owner_id_str = str(pg_user.id)
+            except Exception as e:
+                print(f"Error querying Postgres User in insert_notes: {e}")
+
+        # 2. Try MongoDB users collection
+        if not owner_name:
+            try:
+                user_coll = db["users"]
+                mongo_user = (
+                    user_coll.find_one({"id": str(user_id)})
+                    or user_coll.find_one({"id": int(user_id) if str(user_id).isdigit() else user_id})
+                    or user_coll.find_one({"zuid": str(user_id)})
+                )
+                if mongo_user:
+                    owner_name = (
+                        mongo_user.get("first_name")
+                        or mongo_user.get("name")
+                        or mongo_user.get("full_name")
+                    )
+                    owner_email = mongo_user.get("email") or owner_email
+                    owner_id_str = str(mongo_user.get("id") or user_id)
+            except Exception as e:
+                print(f"Error querying MongoDB users in insert_notes: {e}")
+
+        # 3. Try auth.users dictionary
+        if not owner_name:
+            try:
+                user_id_int = int(user_id) if str(user_id).isdigit() else None
+                if user_id_int and user_id_int in auth.users:
+                    owner_name = auth.users[user_id_int]
+                elif str(user_id) in auth.users:
+                    owner_name = auth.users[str(user_id)]
+            except Exception:
+                pass
+
+        # 4. Fallback based on user_role or generic default
+        if not owner_name:
+            if user_role:
+                owner_name = str(user_role).replace(".", " ").replace("_", " ").title()
+            else:
+                owner_name = f"User #{user_id}"
+
+        Owner = {
+            "id": owner_id_str,
+            "first_name": owner_name,
+            "name": owner_name,
+            "full_name": owner_name,
+            "email": owner_email or "",
+        }
+
+        Created_By = {
+            "id": owner_id_str,
+            "name": owner_name,
+            "first_name": owner_name,
+            "email": owner_email or "",
+        }
+        Modified_By = None
+
+        # Handle parent ID resolution for modules
         if module_name in ["Accounts", "Accounts_5pc"]:
             raw_parent_acc = (
                 pg_db.query(Account.id, Account.account_name)
@@ -37,8 +108,8 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_acc.id),
-                "account_name": raw_parent_acc.account_name,
+                "id": str(raw_parent_acc.id) if raw_parent_acc else str(parent_id),
+                "account_name": raw_parent_acc.account_name if raw_parent_acc else "Unknown",
             }
         elif module_name in ["Contacts", "Contacts_5pc"]:
             raw_parent_con = (
@@ -47,8 +118,8 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_con.id),
-                "contact_name": raw_parent_con.last_name,
+                "id": str(raw_parent_con.id) if raw_parent_con else str(parent_id),
+                "contact_name": raw_parent_con.last_name if raw_parent_con else "Unknown",
             }
         elif module_name in ["Tickets", "Tickets_5pc"]:
             raw_parent_ticket = (
@@ -58,8 +129,8 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_ticket.id),
-                "ticket_name": raw_parent_ticket.account_name,
+                "id": str(raw_parent_ticket.id) if raw_parent_ticket else str(parent_id),
+                "ticket_name": raw_parent_ticket.account_name if raw_parent_ticket else "Unknown",
             }
         elif module_name in ["Job_Requirements", "Job_Requirements_5pc"]:
             from src.models.hiring import JobRequirement
@@ -70,7 +141,7 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_jr.id),
+                "id": str(raw_parent_jr.id) if raw_parent_jr else str(parent_id),
                 "job_requirement_name": raw_parent_jr.hiring_position
                 if raw_parent_jr
                 else "Unknown",
@@ -84,7 +155,7 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_can.id),
+                "id": str(raw_parent_can.id) if raw_parent_can else str(parent_id),
                 "candidate_name": raw_parent_can.candidate_name
                 if raw_parent_can
                 else "Unknown",
@@ -111,17 +182,11 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 .first()
             )
             Parent_Id = {
-                "id": str(raw_parent_deal.id),
+                "id": str(raw_parent_deal.id) if raw_parent_deal else str(parent_id),
                 "deal_name": raw_parent_deal.deal_name
                 if raw_parent_deal
                 else "Unknown",
             }
-        Modified_By = None
-        Created_By = (
-            {"id": Owner["id"], "name": Owner["first_name"], "email": Owner["email"]}
-            if Owner
-            else None
-        )
 
         now_iso = datetime.now(UTC).isoformat()
         note_doc = {
@@ -238,6 +303,53 @@ def get_notes(
             if "notesParentId" not in note:
                 note["notesParentId"] = None
 
+            # Fix/Backfill missing or incomplete Owner/Created_By
+            owner_obj = note.get("Owner")
+            created_by_obj = note.get("Created_By")
+
+            uid = None
+            if isinstance(created_by_obj, dict) and created_by_obj.get("id"):
+                uid = created_by_obj.get("id")
+            elif isinstance(owner_obj, dict) and owner_obj.get("id"):
+                uid = owner_obj.get("id")
+            elif isinstance(owner_obj, (str, int)):
+                uid = owner_obj
+
+            if uid:
+                uid_str = str(uid)
+                uid_int = int(uid) if uid_str.isdigit() else None
+                resolved_name = None
+
+                if uid_int and uid_int in auth.users:
+                    resolved_name = auth.users[uid_int]
+                elif uid_str in auth.users:
+                    resolved_name = auth.users[uid_str]
+
+                if resolved_name:
+                    if not owner_obj or not isinstance(owner_obj, dict):
+                        note["Owner"] = {
+                            "id": uid_str,
+                            "first_name": resolved_name,
+                            "name": resolved_name,
+                            "full_name": resolved_name,
+                        }
+                    elif not (owner_obj.get("first_name") or owner_obj.get("name")):
+                        owner_obj["first_name"] = resolved_name
+                        owner_obj["name"] = resolved_name
+                        owner_obj["full_name"] = resolved_name
+
+                    if not created_by_obj or not isinstance(created_by_obj, dict):
+                        note["Created_By"] = {
+                            "id": uid_str,
+                            "name": resolved_name,
+                            "first_name": resolved_name,
+                            "full_name": resolved_name,
+                        }
+                    elif not created_by_obj.get("name"):
+                        created_by_obj["name"] = resolved_name
+                        created_by_obj["first_name"] = resolved_name
+                        created_by_obj["full_name"] = resolved_name
+
             # Time formatting
             for time_key in ["Created_Time", "Modified_Time"]:
                 if note.get(time_key):
@@ -246,16 +358,13 @@ def get_notes(
                         dt = (
                             datetime.fromisoformat(val) if isinstance(val, str) else val
                         )
-                        # assume UTC if timezone missing
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=UTC)
-
-                        # convert to IST
                         dt = dt.astimezone(IST)
-
                         note[time_key] = dt.strftime("%d %b %Y, %I:%M %p")
-                    except:
+                    except Exception:
                         pass
+
             notes.append(note)
         return notes
 
