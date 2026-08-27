@@ -41,8 +41,17 @@ Do not reflect or create tables on application startup. Use alembic (which is al
 app = FastAPI()
 
 
+from sqlalchemy import text
+from src.database import engine
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS company_id INTEGER DEFAULT 1;"))
+            conn.commit()
+    except Exception:
+        pass
     BackgroundThreadPool.initialize_thread_pool()
     yield
     BackgroundThreadPool.shutdown()
