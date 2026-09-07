@@ -125,6 +125,7 @@ class AccountBase(BaseModel):
 
     # Flags & Dates (Optional)
     waba_interested: bool | None = False
+    is_active: str | None = "no"
     call_back_date_time: datetime | None = None
     created_time: datetime | None = Field(default_factory=lambda: datetime.now(IST))
 
@@ -203,6 +204,7 @@ class AccountResponse(BaseModel):
     account_stage: Any | None = None
     profile_type: str | None = None
     is_priority_account: str | None = None
+    is_active: str | None = "no"
 
     created_by_id: str | None = None
     created_time: datetime | None = None
