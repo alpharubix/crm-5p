@@ -70,6 +70,11 @@ class AccountTask(Base):
     task_due_date_time = Column(DateTime(timezone=True), nullable=True)
     task_status = Column(String(50), default="Unassigned", nullable=False, index=True)
 
+    # Target & Completion Fields
+    target_account_status = Column(String(100), nullable=True)
+    target_call_back_date_time = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
     # Assignee & Audit
     assigned_to_id = Column(BIGINT, ForeignKey("users.id"), nullable=True, index=True)
     created_by_id = Column(BIGINT, ForeignKey("users.id"), nullable=True)
