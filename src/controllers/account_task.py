@@ -130,6 +130,26 @@ def task_to_dict(
     }
 
 
+FALLBACK_COMPLETION_STATUSES = {
+    "on hold",
+    "not interested",
+    "location unserviceable",
+    "loc unservice",
+    "business closed",
+}
+
+
+def is_fallback_completion_status(status_str: str | None) -> bool:
+    if not status_str:
+        return False
+    s = str(status_str).strip().lower()
+    if s in FALLBACK_COMPLETION_STATUSES:
+        return True
+    if any(k in s for k in ("on hold", "not interested", "unservice", "business closed")):
+        return True
+    return False
+
+
 def validate_target_fields_for_completion(
     task: AccountTask,
     target_status: str | None = None,
@@ -142,16 +162,26 @@ def validate_target_fields_for_completion(
             detail="Cannot complete task: Linked account not found.",
         )
 
+    acc_status = (account.account_status or "").strip()
+    norm_acc_status = acc_status.lower()
+    is_fallback = is_fallback_completion_status(norm_acc_status)
+
     if target_status and str(target_status).strip():
-        acc_status = (account.account_status or "").strip()
         expected_status = str(target_status).strip()
-        if acc_status.lower() != expected_status.lower():
+        norm_expected = expected_status.lower()
+        is_target_matched = norm_acc_status == norm_expected
+
+        if not (is_target_matched or is_fallback):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot complete task: Account status ('{acc_status or 'Blank'}') does not match target account status ('{expected_status}').",
+                detail=(
+                    f"Cannot complete task: Account status ('{acc_status or 'Blank'}') "
+                    f"does not match target account status ('{expected_status}') "
+                    f"and is not one of: On Hold, Not Interested, Location Unserviceable, Business Closed."
+                ),
             )
 
-    if target_cb is not None:
+    if target_cb is not None and not is_fallback:
         acc_cb = account.call_back_date_time
         if acc_cb is None:
             raise HTTPException(
@@ -230,6 +260,7 @@ def create_account_task(db: Session, task_in: AccountTaskCreate, current_user_id
         created_by_id=current_user_id,
         modified_by_id=current_user_id,
     )
+    task.account = account
     if task.task_status == "Completed":
         validate_target_fields_for_completion(
             task, task.target_account_status, task.target_call_back_date_time
@@ -839,10 +870,15 @@ def update_account_task(
             allowed_owner_ids.add(str(task.assigned_to_id))
 
         is_owner = bool(user_ids.intersection(allowed_owner_ids))
+        if not is_owner and role not in ("super_admin", "admin", "manager") and current_user_id not in bypass_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the Task Owner, Account Owner, or Manager/Admin can update task status.",
+            )
         if is_owner and new_requested_status not in ("Pending", "In Progress", "Completed", "Verified"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account Owners can only set task status to Pending, In Progress, Completed, or Verified.",
+                detail="Task/Account Owners can only set task status to Pending, In Progress, Completed, or Verified.",
             )
 
     old_status = task.task_status
