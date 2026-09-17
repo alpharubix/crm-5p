@@ -12,9 +12,11 @@ from fastapi import FastAPI
 from src.controllers.Background_threads import BackgroundThreadPool
 from src.middleware.auth import authorization
 from src.models.account_task import AccountTask  # noqa
+from src.models.deal_task import DealTask  # noqa
 from src.routers import account as account_router
 from src.routers import account_task as account_task_router
 from src.routers import audit_log as audit_log_router
+from src.routers import deal_task as deal_task_router
 from src.routers import contact as contact_router
 from src.routers import project as project_router
 from src.routers import user as user_router
@@ -82,6 +84,7 @@ app.add_middleware(
 
 app.include_router(account_router.router)
 app.include_router(account_task_router.router)
+app.include_router(deal_task_router.router)
 app.include_router(contact_router.router)
 app.include_router(user_router.router)
 app.include_router(authentication_router)

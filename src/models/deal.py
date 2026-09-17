@@ -9,6 +9,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import BIGINT, JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -113,3 +114,13 @@ class Deal(Base):
     documents = relationship(
         "DealDocument", back_populates="deal", cascade="all, delete-orphan"
     )
+
+    @hybrid_property
+    def account_owner_id(self):
+        return self.account.account_owner_id if self.account else None
+
+    @hybrid_property
+    def account_owner(self):
+        if self.account and self.account.owner:
+            return self.account.owner.full_name or self.account.owner.email
+        return None

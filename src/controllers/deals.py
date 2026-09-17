@@ -4,12 +4,13 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, joinedload
 
 from src.controllers.audit_log import log_action
 from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 from src.models.deal import Deal
+from src.models.account import Account
 
 
 def get_deals(
@@ -195,7 +196,11 @@ def get_deals(
         # Single Deal Detail View Scenario
         if deal_id:
             deals = (
-                base_query.options(selectinload(Deal.owner), selectinload(Deal.revenue))
+                base_query.options(
+                    selectinload(Deal.owner),
+                    selectinload(Deal.revenue),
+                    selectinload(Deal.account).selectinload(Account.owner),
+                )
                 .limit(1)
                 .all()
             )
@@ -204,6 +209,17 @@ def get_deals(
                 ids_list = [str(deal.id)]
                 if getattr(deal, "crm_deal_id", None):
                     ids_list.append(str(deal.crm_deal_id))
+
+                try:
+                    from src.models.deal_task import DealTask
+
+                    deal_task_records = (
+                        db.query(DealTask.id).filter(DealTask.deal_id == deal.id).all()
+                    )
+                    for task_rec in deal_task_records:
+                        ids_list.append(str(task_rec.id))
+                except Exception:
+                    pass
 
                 tickets_records = (
                     db.query(Ticket).filter(Ticket.deal_id == deal.id).all()
@@ -253,7 +269,17 @@ def get_deals(
                 notes = get_notes(
                     id_list=ids_list,
                     notes_collection=mongodb_conn["Notes"],
-                    module_name=["Deals_5pc", "Tickets_5pc"],
+                    module_name=[
+                        "Deals_5pc",
+                        "Tickets_5pc",
+                        "Deals",
+                        "Tickets",
+                        "Deal_Tasks",
+                        "DealTask",
+                        "DealTasks",
+                        "Deal Task",
+                        "Deal_Tasks_5pc",
+                    ],
                 )
 
                 deal_dict = {
@@ -264,6 +290,34 @@ def get_deals(
                     deal_dict["deal_owner_id"] = str(deal.deal_owner_id)
                 if deal.account_id:
                     deal_dict["account_id"] = str(deal.account_id)
+                if deal.account and deal.account.account_name:
+                    deal_dict["account_name"] = deal.account.account_name
+
+                acc_owner_id = None
+                acc_owner_name = None
+                if deal.account:
+                    acc_owner_id = deal.account.account_owner_id
+                    if deal.account.owner:
+                        acc_owner_name = deal.account.owner.full_name or deal.account.owner.email
+                elif deal.account_id:
+                    try:
+                        acc = (
+                            db.query(Account)
+                            .options(joinedload(Account.owner))
+                            .filter(Account.id == deal.account_id)
+                            .first()
+                        )
+                        if acc:
+                            acc_owner_id = acc.account_owner_id
+                            if acc.owner:
+                                acc_owner_name = acc.owner.full_name or acc.owner.email
+                    except Exception:
+                        pass
+
+                if acc_owner_id:
+                    deal_dict["account_owner_id"] = str(acc_owner_id)
+                if acc_owner_name:
+                    deal_dict["account_owner"] = acc_owner_name
                 deal_dict["case_status"] = deal.deal_status
                 deal_dict["case_stage"] = deal.deal_stage
 

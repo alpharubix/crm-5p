@@ -4,6 +4,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from pymongo.synchronous.collection import Collection
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 
@@ -160,7 +161,12 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 if raw_parent_can
                 else "Unknown",
             }
-        elif module_name in ["Account_Tasks", "AccountTasks", "AccountTask"]:
+        elif module_name in [
+            "Account_Tasks",
+            "AccountTasks",
+            "AccountTask",
+            "Account Task",
+        ]:
             from src.models.account_task import AccountTask
 
             p_int = int(parent_id) if str(parent_id).isdigit() else None
@@ -174,6 +180,27 @@ def insert_notes(user_id, user_role, note, parent_id, db, module_name, pg_db: Se
                 "task_name": f"Account Task #{raw_parent_task.id}"
                 if raw_parent_task
                 else "Account Task",
+            }
+        elif module_name in [
+            "Deal_Tasks",
+            "DealTasks",
+            "DealTask",
+            "Deal Task",
+            "Deal_Tasks_5pc",
+        ]:
+            from src.models.deal_task import DealTask
+
+            p_int = int(parent_id) if str(parent_id).isdigit() else None
+            raw_parent_task = (
+                pg_db.query(DealTask.id, DealTask.task_type)
+                .filter(or_(DealTask.id == parent_id, DealTask.id == p_int))
+                .first()
+            )
+            Parent_Id = {
+                "id": str(raw_parent_task.id) if raw_parent_task else str(parent_id),
+                "task_name": f"Deal Task #{raw_parent_task.id}"
+                if raw_parent_task
+                else "Deal Task",
             }
         else:
             raw_parent_deal = (
