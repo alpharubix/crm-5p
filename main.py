@@ -16,8 +16,8 @@ from src.models.deal_task import DealTask  # noqa
 from src.routers import account as account_router
 from src.routers import account_task as account_task_router
 from src.routers import audit_log as audit_log_router
-from src.routers import deal_task as deal_task_router
 from src.routers import contact as contact_router
+from src.routers import deal_task as deal_task_router
 from src.routers import project as project_router
 from src.routers import user as user_router
 from src.routers.authentication import authentication_router
@@ -44,13 +44,19 @@ app = FastAPI()
 
 
 from sqlalchemy import text
+
 from src.database import engine
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS company_id INTEGER DEFAULT 1;"))
+            conn.execute(
+                text(
+                    "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS company_id INTEGER DEFAULT 1;"
+                )
+            )
             conn.commit()
     except Exception:
         pass
@@ -76,6 +82,8 @@ app.add_middleware(
         "http://localhost:5174",
         "https://r1xchange-crm.netlify.app",
         "https://5pointcredit-crm.vercel.app",
+        "https://sail.5pointcredit.com",
+        "https://5pointcredit.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
