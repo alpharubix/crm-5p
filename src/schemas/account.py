@@ -247,6 +247,9 @@ class AccountResponse(BaseModel):
     status_journey: list[AccountStatusJourneyItem] | None = Field(default_factory=list)
     journey: list[AccountStatusJourneyItem] | None = Field(default_factory=list)
 
+    # TeleCRM Activities
+    telecrm_activities: list[dict[str, Any]] | None = Field(default_factory=list)
+
     model_config = {"from_attributes": True}
 
     @model_validator(mode="before")
@@ -256,6 +259,7 @@ class AccountResponse(BaseModel):
             hasattr(value, "_tickets_list")
             or hasattr(value, "_deal_documents_list")
             or hasattr(value, "_revenue_list")
+            or hasattr(value, "telecrm_activities")
         ):
             data = {}
             if hasattr(value, "__table__"):
@@ -279,6 +283,7 @@ class AccountResponse(BaseModel):
                 "parent_account",
                 "status_journey",
                 "journey",
+                "telecrm_activities",
             ):
                 if hasattr(value, attr):
                     data[attr] = getattr(value, attr)
@@ -286,6 +291,7 @@ class AccountResponse(BaseModel):
             data["tickets"] = getattr(value, "_tickets_list", [])
             data["deal_documents"] = getattr(value, "_deal_documents_list", [])
             data["revenue"] = getattr(value, "_revenue_list", [])
+            data["telecrm_activities"] = getattr(value, "telecrm_activities", [])
             return data
         return value
 
