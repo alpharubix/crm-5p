@@ -1180,7 +1180,7 @@ def get_all_accounts(
             j_list = journeys_map.get(acc.id, [])
             acc.status_journey = j_list
             acc.journey = j_list
-            acc.telecrm_activities = fetch_account_call_recording(acc, mongodb)
+            # acc.telecrm_activities = fetch_account_call_recording(acc, mongodb)
 
         total_pages = math.ceil(total_data_size / limit)
         return {

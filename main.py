@@ -27,6 +27,7 @@ from src.routers.export_csv import export_csv_router
 from src.routers.notes import notes_router
 from src.routers.revenue import revenue_router
 from src.routers.support_tickets import support_tickets_router
+from src.routers import tele_crm as tele_crm_router
 from src.routers.tickets import tickets_router
 from src.routers.webhook import webhook_api_router
 
@@ -106,6 +107,7 @@ app.include_router(deal_docs_router)
 app.include_router(revenue_router)
 app.include_router(webhook_api_router)
 app.include_router(support_tickets_router)
+app.include_router(tele_crm_router.router, prefix="/tele-crm")
 
 if __name__ == "__main__":
     # Cloud Run provides PORT as an env var; default to 8080 if not found
