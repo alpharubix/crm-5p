@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from starlette.requests import Request
 
@@ -10,8 +11,8 @@ from src.schemas.support_tickets import SupportTicketCreate, SupportTicketStatus
 support_tickets_router = APIRouter(prefix="/v1/support-ticket", tags=["Support Tickets"])
 
 
+
 @support_tickets_router.post("/create")
-@support_tickets_router.post("/ticket/create", include_in_schema=False)
 def create_support_ticket(
     request: Request,
     payload: SupportTicketCreate,
@@ -60,9 +61,13 @@ def create_support_ticket(
 
 
 @support_tickets_router.get("/history")
-@support_tickets_router.get("/ticket/history", include_in_schema=False)
 def get_support_ticket_history(
     request: Request,
+    from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    status: Optional[str] = Query(None, description="Ticket status filter"),
+    priority: Optional[str] = Query(None, description="Ticket priority filter"),
+    search: Optional[str] = Query(None, description="Search ticket ID or title"),
     db: Session = Depends(get_db)
 ):
     try:
@@ -75,17 +80,52 @@ def get_support_ticket_history(
 
         user_role_str = str(getattr(request.state, "role", "user")).lower().replace(" ", "_")
 
-        company_filter = (SupportTicket.company_id == 2)
+        company_filter = or_(SupportTicket.company_id == 1, SupportTicket.company_id.is_(None))
+        query = db.query(SupportTicket).options(joinedload(SupportTicket.user)).filter(company_filter)
+
         # Managers, Admins, Super Admins can see all tickets, regular users see their own
-        if user_role_str in ["admin", "superadmin", "super_admin", "manager"]:
-            tickets = db.query(SupportTicket).options(joinedload(SupportTicket.user)).filter(company_filter).order_by(SupportTicket.id.desc()).all()
-        else:
-            tickets = db.query(SupportTicket).options(joinedload(SupportTicket.user)).filter(company_filter, SupportTicket.user_id == user_id).order_by(SupportTicket.id.desc()).all()
+        if user_role_str not in ["admin", "superadmin", "super_admin", "manager"]:
+            query = query.filter(SupportTicket.user_id == user_id)
+
+        # Period / Date & Time filters
+        if from_date:
+            if len(from_date.strip()) > 10:
+                query = query.filter(SupportTicket.created_at >= from_date.strip().replace("T", " "))
+            else:
+                query = query.filter(func.date(SupportTicket.created_at) >= from_date.strip())
+        if to_date:
+            if len(to_date.strip()) > 10:
+                query = query.filter(SupportTicket.created_at <= to_date.strip().replace("T", " "))
+            else:
+                query = query.filter(func.date(SupportTicket.created_at) <= to_date.strip())
+
+        # Status filter
+        if status and status.upper() != "ALL":
+            status_clean = status.upper().replace(" ", "_")
+            if status_clean == "INPROGRESS":
+                status_clean = "IN_PROGRESS"
+            query = query.filter(func.upper(SupportTicket.status) == status_clean)
+
+        # Priority filter
+        if priority and priority.upper() != "ALL":
+            query = query.filter(func.lower(SupportTicket.priority) == priority.lower())
+
+        # Search filter
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            query = query.filter(
+                or_(
+                    SupportTicket.ticket_id.ilike(term),
+                    SupportTicket.title.ilike(term),
+                    SupportTicket.service.ilike(term),
+                    SupportTicket.description.ilike(term),
+                )
+            )
+
+        tickets = query.order_by(SupportTicket.id.desc()).all()
 
         formatted_tickets = []
         for t in tickets:
-            user_name = t.user.full_name if t.user and hasattr(t.user, "full_name") else f"User #{t.user_id}"
-            user_email = t.user.email if t.user and hasattr(t.user, "email") else None
             formatted_tickets.append({
                 "ticket_id": t.ticket_id,
                 "title": t.title,
@@ -94,9 +134,9 @@ def get_support_ticket_history(
                 "description": t.description,
                 "status": t.status,
                 "created_at": t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else None,
-                "user_id": t.user_id,
-                "user_name": user_name,
-                "user_email": user_email
+                "user_id": str(t.user_id),
+                "user_name": t.user.full_name if t.user else None,
+                "user_email": t.user.email if t.user else None,
             })
 
         return {
@@ -120,6 +160,7 @@ def update_support_ticket_status(
     request: Request,
     db: Session = Depends(get_db)
 ):
+
     try:
         user_id = getattr(request.state, "user_id", None)
         user_role_str = str(getattr(request.state, "role", "user")).lower().replace(" ", "_")
@@ -141,13 +182,15 @@ def update_support_ticket_status(
             )
 
         # Only admin and super_admin/superadmin can update ticket status
-        is_admin = user_role_str in ["admin", "superadmin", "super_admin", "manager"]
+        is_admin = user_role_str in ["admin", "superadmin", "super_admin"]
 
         if not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied. Only admins and super_admins can update ticket status."
             )
+
+
 
         allowed_statuses = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
         new_status = payload.status.upper()
@@ -176,3 +219,4 @@ def update_support_ticket_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update ticket status: {str(e)}"
         )
+
