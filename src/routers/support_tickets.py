@@ -1,4 +1,6 @@
+from datetime import datetime
 from typing import Optional, List, Union
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -14,6 +16,16 @@ from src.schemas.support_tickets import (
 )
 
 support_tickets_router = APIRouter(prefix="/v1/support-ticket", tags=["Support Tickets"])
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _to_ist_str(dt: Optional[datetime]) -> Optional[str]:
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(IST).strftime("%Y-%m-%d %I:%M:%S %p")
 
 
 def _normalize_links(links_raw: Optional[Union[List[str], str]], single_link_raw: Optional[Union[List[str], str]] = None) -> List[str]:
@@ -53,6 +65,7 @@ def create_support_ticket(
 
         ticket = SupportTicket(
             ticket_id=ticket_code,
+            company_id=2,
             user_id=user_id,
             title=payload.title,
             service=payload.service,
@@ -70,9 +83,10 @@ def create_support_ticket(
             "message": "Support ticket created successfully",
             "data": {
                 "ticket_id": ticket.ticket_id,
+                "company_id": ticket.company_id,
                 "status": ticket.status,
                 "attachment_links": ticket.attachment_links or [],
-                "created_at": ticket.created_at.strftime("%Y-%m-%d %I:%M:%S %p") if ticket.created_at else None
+                "created_at": _to_ist_str(ticket.created_at)
             }
         }
     except HTTPException:
@@ -105,7 +119,7 @@ def get_support_ticket_history(
 
         user_role_str = str(getattr(request.state, "role", "user")).lower().replace(" ", "_")
 
-        company_filter = or_(SupportTicket.company_id == 2, SupportTicket.company_id.is_(None), SupportTicket.company_id == 1)
+        company_filter = (SupportTicket.company_id == 2)
         query = db.query(SupportTicket).options(
             joinedload(SupportTicket.user),
             joinedload(SupportTicket.updater)
@@ -115,17 +129,18 @@ def get_support_ticket_history(
         if user_role_str not in ["admin", "superadmin", "super_admin", "manager"]:
             query = query.filter(SupportTicket.user_id == user_id)
 
-        # Period / Date & Time filters
+        # Period / Date & Time filters (comparing in IST timezone)
+        ist_created_at = func.timezone('Asia/Kolkata', SupportTicket.created_at)
         if from_date:
             if len(from_date.strip()) > 10:
-                query = query.filter(SupportTicket.created_at >= from_date.strip().replace("T", " "))
+                query = query.filter(ist_created_at >= from_date.strip().replace("T", " "))
             else:
-                query = query.filter(func.date(SupportTicket.created_at) >= from_date.strip())
+                query = query.filter(func.date(ist_created_at) >= from_date.strip())
         if to_date:
             if len(to_date.strip()) > 10:
-                query = query.filter(SupportTicket.created_at <= to_date.strip().replace("T", " "))
+                query = query.filter(ist_created_at <= to_date.strip().replace("T", " "))
             else:
-                query = query.filter(func.date(SupportTicket.created_at) <= to_date.strip())
+                query = query.filter(func.date(ist_created_at) <= to_date.strip())
 
         # Status filter
         if status and status.upper() != "ALL":
@@ -160,6 +175,7 @@ def get_support_ticket_history(
 
             formatted_tickets.append({
                 "ticket_id": t.ticket_id,
+                "company_id": t.company_id,
                 "title": t.title,
                 "service": t.service,
                 "priority": t.priority,
@@ -167,8 +183,8 @@ def get_support_ticket_history(
                 "status": t.status,
                 "attachment_links": links,
                 "attachment_link": links[0] if links else None,
-                "created_at": t.created_at.strftime("%Y-%m-%d %I:%M:%S %p") if t.created_at else None,
-                "updated_at": t.updated_at.strftime("%Y-%m-%d %I:%M:%S %p") if t.updated_at else None,
+                "created_at": _to_ist_str(t.created_at),
+                "updated_at": _to_ist_str(t.updated_at),
                 "user_id": str(t.user_id),
                 "user_name": t.user.full_name if t.user else None,
                 "user_email": t.user.email if t.user else None,
@@ -262,11 +278,12 @@ def update_support_ticket_status(
             "message": f"Ticket status updated to {new_status}",
             "data": {
                 "ticket_id": ticket.ticket_id,
+                "company_id": ticket.company_id,
                 "status": ticket.status,
                 "updated_by": str(ticket.updated_by) if ticket.updated_by else None,
                 "updated_by_name": updater_name,
                 "updated_by_email": updater_email,
-                "updated_at": ticket.updated_at.strftime("%Y-%m-%d %I:%M:%S %p") if ticket.updated_at else None,
+                "updated_at": _to_ist_str(ticket.updated_at),
             }
         }
     except HTTPException:
@@ -369,6 +386,7 @@ def update_support_ticket(
             "message": "Support ticket updated successfully",
             "data": {
                 "ticket_id": ticket.ticket_id,
+                "company_id": ticket.company_id,
                 "title": ticket.title,
                 "service": ticket.service,
                 "priority": ticket.priority,
@@ -378,7 +396,7 @@ def update_support_ticket(
                 "updated_by": str(ticket.updated_by) if ticket.updated_by else None,
                 "updated_by_name": updater_name,
                 "updated_by_email": updater_email,
-                "updated_at": ticket.updated_at.strftime("%Y-%m-%d %I:%M:%S %p") if ticket.updated_at else None,
+                "updated_at": _to_ist_str(ticket.updated_at),
             }
         }
     except HTTPException:
