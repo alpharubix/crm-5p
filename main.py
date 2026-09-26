@@ -58,6 +58,16 @@ async def lifespan(app: FastAPI):
                     "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS company_id INTEGER DEFAULT 1;"
                 )
             )
+            conn.execute(
+                text(
+                    "ALTER TABLE support_tickets_merged ADD COLUMN IF NOT EXISTS attachment_links JSONB DEFAULT '[]'::jsonb;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE support_tickets_merged ADD COLUMN IF NOT EXISTS updated_by BIGINT;"
+                )
+            )
             conn.commit()
     except Exception:
         pass
