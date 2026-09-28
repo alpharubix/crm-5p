@@ -53,6 +53,12 @@ class Deal(Base):
     ticket_login = Column(String(100), nullable=True)
     deal_stage = Column(String(50), nullable=True, index=True)
     deal_status = Column(String(50), nullable=True, index=True)
+    deal_approval = Column(
+        String(50),
+        nullable=True,
+        index=True,
+    )
+    deal_description = Column(Text, nullable=True)
     crm_deal_id = Column(BIGINT, nullable=True, index=True)
     partner_name = Column(String(150), nullable=True)
 

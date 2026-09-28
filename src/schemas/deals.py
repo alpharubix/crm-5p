@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 from pydantic import (
     BaseModel,
@@ -34,6 +34,9 @@ class DealSchema(BaseModel):
     ticket_login: str | None = None
     deal_stage: str | None = None
     deal_status: str | None = None
+    deal_approval: str | None = None
+    deal_description: str | None = None
+    type_of_loan: str | None = None
 
     # Amounts
     disbursed_amount: Decimal | None = None
@@ -112,10 +115,22 @@ class DealSchema(BaseModel):
             data["tickets"] = value._tickets_list
             data["modified_time"] = getattr(value, "updated_at", getattr(value, "modified_time", None))
             data["created_time"] = getattr(value, "created_at", getattr(value, "created_time", None))
+            data["type_of_loan"] = getattr(value, "loan_type", None)
+            data["deal_approval"] = getattr(value, "deal_approval", None)
+            data["deal_description"] = getattr(value, "deal_description", None)
             for attr in ("owner", "notes", "account_owner_id", "account_owner"):
                 if hasattr(value, attr):
                     data[attr] = getattr(value, attr)
             return data
+        elif isinstance(value, dict):
+            if "type_of_loan" not in value or not value.get("type_of_loan"):
+                value["type_of_loan"] = value.get("loan_type")
+            if "loan_type" not in value or not value.get("loan_type"):
+                value["loan_type"] = value.get("type_of_loan")
+            if "deal_approval" not in value or not value.get("deal_approval"):
+                value["deal_approval"] = value.get("deal_approval")
+            if "deal_description" not in value:
+                value["deal_description"] = value.get("deal_description")
         return value
 
     @field_serializer("deal_call_back_datetime", "created_at", "updated_at")
@@ -156,7 +171,7 @@ class DealCreationBody(BaseModel):
     # Primary Key
     id: Optional[int] = None
     # Relationship
-    account_id: int  # ← str → int
+    account_id: Union[str, int]
 
     # Deal & Ticket Info
     ticket_id: Optional[int] = None
@@ -168,6 +183,9 @@ class DealCreationBody(BaseModel):
     ticket_login: Optional[str] = None
     deal_stage: Optional[str] = None
     deal_status: Optional[str] = None
+    deal_approval: Optional[str] = None
+    deal_description: Optional[str] = None
+    type_of_loan: Optional[str] = None
 
     deal_expected_closing: Optional[date] = None
     deal_status_closing: Optional[date] = None

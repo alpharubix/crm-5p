@@ -11,6 +11,7 @@ from src.controllers.auth import MANAGERID
 from src.controllers.notes import get_notes
 from src.models.deal import Deal
 from src.models.account import Account
+from src.models.user import User
 
 
 def get_deals(
@@ -164,6 +165,7 @@ def get_deals(
                     Deal.account_name,
                     Deal.lender_name,
                     Deal.deal_status,
+                    Deal.deal_approval,
                     Deal.loan_type,
                     Deal.deal_owner_id,
                     Deal.deal_expected_closing,
@@ -182,6 +184,8 @@ def get_deals(
                     {
                         **deal._asdict(),
                         "id": str(deal.id),
+                        "deal_approval": deal.deal_approval,
+                        "type_of_loan": deal.loan_type,
                         "deal_owner_id": str(deal.deal_owner_id)
                         if deal.deal_owner_id
                         else None,
@@ -320,6 +324,9 @@ def get_deals(
                     deal_dict["account_owner"] = acc_owner_name
                 deal_dict["case_status"] = deal.deal_status
                 deal_dict["case_stage"] = deal.deal_stage
+                deal_dict["type_of_loan"] = getattr(deal, "loan_type", None)
+                deal_dict["deal_approval"] = getattr(deal, "deal_approval", None)
+                deal_dict["deal_description"] = getattr(deal, "deal_description", None)
 
                 deal_dict["payment_receipt"] = None
                 deal_dict["notes"] = notes
@@ -352,6 +359,8 @@ def get_deals(
                 Deal.lender_name,
                 Deal.deal_status,
                 Deal.deal_stage,
+                Deal.deal_approval,
+                Deal.deal_description,
                 Deal.loan_type,
                 Deal.ticket_login,
                 Deal.deal_owner_id,
@@ -378,6 +387,10 @@ def get_deals(
                 {
                     **d._asdict(),
                     "id": str(d.id),
+                    "deal_approval": d.deal_approval,
+                    "deal_description": d.deal_description,
+                    "type_of_loan": d.loan_type,
+                    "loan_type": d.loan_type,
                     "deal_owner_id": str(d.deal_owner_id) if d.deal_owner_id else None,
                     "case_status": d.deal_status,
                     "case_stage": d.deal_stage,
@@ -444,6 +457,8 @@ def create_deal(deal, db: Session, user_id, user_role):
             ticket_login=deal.ticket_login,
             deal_stage=deal.deal_stage,
             deal_status=deal.deal_status,
+            deal_approval=deal.deal_approval or "Pending Approval",
+            deal_description=deal.deal_description,
             amount_required=deal.amount_required,
             mm_charges=deal.mm_charges,
             lender_name=deal.lender_name,
@@ -471,69 +486,121 @@ def create_deal(deal, db: Session, user_id, user_role):
         )
 
         return created_deal
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail={"message": str(e)})
 
 
 def update_deal_based_on_id(user_id, user_role, db: Session, deal_id: int, payload):
-    db_deal = db.query(Deal).filter(Deal.id == deal_id).first()
-    if not db_deal:
-        raise HTTPException(status_code=404, detail={"msg": "Deal not found"})
+    try:
+        user_id = int(user_id) if user_id else None
+        db_deal = db.query(Deal).filter(Deal.id == deal_id).first()
+        if not db_deal:
+            raise HTTPException(status_code=404, detail={"msg": "Deal not found"})
 
-    # --- Duplicate deal check on UPDATE: same account + deal_type + loan_type ---
-    new_deal_type = payload.get("deal_type", db_deal.deal_type)
-    new_loan_type = payload.get("loan_type", db_deal.loan_type)
-    if new_deal_type and new_loan_type:
-        duplicate = (
-            db.query(Deal)
-            .filter(
-                Deal.account_id == db_deal.account_id,
-                Deal.deal_type == new_deal_type,
-                Deal.loan_type == new_loan_type,
-                Deal.id != deal_id,  # exclude self
+        # --- Duplicate deal check on UPDATE: only if deal_type or loan_type is changing ---
+        new_deal_type = payload.get("deal_type", db_deal.deal_type)
+        new_loan_type = payload.get("loan_type", db_deal.loan_type)
+        is_type_changing = (
+            "deal_type" in payload and payload["deal_type"] != db_deal.deal_type
+        ) or ("loan_type" in payload and payload["loan_type"] != db_deal.loan_type)
+        if is_type_changing and new_deal_type and new_loan_type:
+            duplicate = (
+                db.query(Deal)
+                .filter(
+                    Deal.account_id == db_deal.account_id,
+                    Deal.deal_type == new_deal_type,
+                    Deal.loan_type == new_loan_type,
+                    Deal.id != deal_id,  # exclude self
+                )
+                .first()
             )
-            .first()
-        )
-        if duplicate:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    'A similar deal with same "Deal Type" and "Type of Loan" already exist, '
-                    'Please try changing the "Deal Type" and "Type of Loan" else refer to the existing deals'
-                ),
-            )
+            if duplicate:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        'A similar deal with same "Deal Type" and "Type of Loan" already exist, '
+                        'Please try changing the "Deal Type" and "Type of Loan" else refer to the existing deals'
+                    ),
+                )
 
-    for key, value in payload.items():
-        if hasattr(db_deal, key):
-            if value == "" or value is None:
-                setattr(db_deal, key, None)
-            elif "datetime" in key or "date" in key or "closing" in key:
-                if isinstance(value, str):
-                    try:
-                        parsed = datetime.fromisoformat(value)
-                        setattr(db_deal, key, parsed)
-                    except ValueError:
-                        raise HTTPException(
-                            status_code=400,
-                            detail={"msg": f"Invalid date format for field: {key}"},
-                        )
+        DATE_COLS = {
+            "disbursement_date",
+            "lender_login_date",
+            "loan_start_date",
+            "loan_end_date",
+            "targeted_disbursement_date",
+            "deal_expected_closing",
+            "deal_status_closing",
+        }
+
+        for key, value in payload.items():
+            if hasattr(db_deal, key):
+                if value == "" or value is None:
+                    setattr(db_deal, key, None)
+                elif key in DATE_COLS:
+                    if isinstance(value, str):
+                        try:
+                            clean_val = value.replace("Z", "+00:00")
+                            parsed = datetime.fromisoformat(clean_val)
+                            setattr(db_deal, key, parsed.date())
+                        except ValueError:
+                            raise HTTPException(
+                                status_code=400,
+                                detail={"msg": f"Invalid date format for field: {key}"},
+                            )
+                    elif isinstance(value, datetime):
+                        setattr(db_deal, key, value.date())
+                    elif isinstance(value, date):
+                        setattr(db_deal, key, value)
+                    else:
+                        setattr(db_deal, key, value)
+                elif "datetime" in key or "date" in key or "closing" in key:
+                    if isinstance(value, str):
+                        try:
+                            clean_val = value.replace("Z", "+00:00")
+                            parsed = datetime.fromisoformat(clean_val)
+                            setattr(db_deal, key, parsed)
+                        except ValueError:
+                            raise HTTPException(
+                                status_code=400,
+                                detail={"msg": f"Invalid date format for field: {key}"},
+                            )
+                    else:
+                        setattr(db_deal, key, value)
                 else:
                     setattr(db_deal, key, value)
-            else:
-                setattr(db_deal, key, value)
 
-    db_deal.modified_by = user_id
-    db_deal.updated_at = datetime.now(timezone.utc)
+        db_deal.modified_by = user_id
+        db_deal.updated_at = datetime.now(timezone.utc)
 
-    try:
         db.commit()
         db.refresh(db_deal)
-        log_action(db, user_id, user_role, "UPDATED", "Deal", deal_id, payload)
+        try:
+            log_action(db, user_id or 0, user_role, "UPDATED", "Deal", deal_id, payload)
+        except Exception as log_err:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                f"Failed to log deal update audit: {log_err}"
+            )
+
         return {"message": "update-success", "updated_deal_id": str(db_deal.id)}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+        import logging
+
+        logging.getLogger(__name__).exception(
+            f"Unexpected error in update_deal_based_on_id: {e}"
+        )
+        raise HTTPException(
+            status_code=500, detail={"message": f"Database error: {e!s}"}
+        )
 
 
 def get_deal_id(user_id: int, role: str, deal_name: str, db: Session):
