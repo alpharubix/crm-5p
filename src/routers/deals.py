@@ -17,10 +17,8 @@ from src.schemas.deals import DealCreationBody, DealListResponse, DealSchema
 deals_router = APIRouter(prefix="/deals", tags=["deals"])
 
 
-@deals_router.get("", response_model=DealListResponse, response_model_exclude_none=True)
-@deals_router.get(
-    "/", response_model=DealListResponse, response_model_exclude_none=True
-)
+@deals_router.get("", response_model=DealListResponse)
+@deals_router.get("/", response_model=DealListResponse)
 def get_deals_list(
     request: Request,
     db: Session = Depends(get_db),
@@ -68,7 +66,6 @@ def get_deals_list(
 
 @deals_router.post("/", response_model=DealSchema)
 @deals_router.post("", response_model=DealSchema)
-@deals_router.post("", response_model=DealSchema)
 def create_deal_route_function(
     deal: DealCreationBody,
     request: Request,
@@ -78,6 +75,7 @@ def create_deal_route_function(
 
 
 @deals_router.put("/{deal_id}")
+@deals_router.patch("/{deal_id}")
 async def update_deal(
     request: Request,
     deal_id: int,
